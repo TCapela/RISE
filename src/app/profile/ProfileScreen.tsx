@@ -31,15 +31,17 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { profile, setField, addSkill, removeSkill, load, save, loading, saving, error } =
     useProfile();
-  const { signOut } = useAuth() as any;
+  const { signOut, user } = useAuth() as any;
 
   const [editing, setEditing] = useState(false);
   const [skill, setSkill] = useState("");
   const [showLogout, setShowLogout] = useState(false);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (user?.id) {
+      load(user.id);
+    }
+  }, [user?.id]);
 
   const initials = (profile.name || "")
     .split(" ")

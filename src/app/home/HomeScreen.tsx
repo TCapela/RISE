@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView, Image } from "react-native";
 import { useTheme } from "../../theme/theme";
 import { useNavigation } from "@react-navigation/native";
@@ -13,6 +13,7 @@ import {
 } from "lucide-react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProfile } from "../../store/profile.store";
+import { useAuth } from "../../store/auth.store";
 
 const logo = require("../../../assets/logo.png");
 
@@ -20,8 +21,18 @@ export default function HomeScreen() {
   const t = useTheme();
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const { profile } = useProfile();
+  const { profile, load, loading } = useProfile();
+  const { user } = useAuth() as any;
   const [moodChecked, setMoodChecked] = useState(false);
+
+  useEffect(() => {
+    const hasProfileLoaded = !!profile.idUsuario;
+    const hasUserId = !!user?.id;
+
+    if (!hasProfileLoaded && hasUserId && !loading) {
+      load(user.id);
+    }
+  }, [user?.id, profile.idUsuario, loading]);
 
   const { completenessLabel, completenessColor } = useMemo(() => {
     let pts = 0;
@@ -76,7 +87,6 @@ export default function HomeScreen() {
           paddingBottom: insets.bottom + t.spacing.xxl + 40,
         }}
       >
-        {/* HEADER */}
         <View
           style={{
             flexDirection: "row",
@@ -109,7 +119,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* BLOCO DE ATAJOS */}
         <View
           style={{
             backgroundColor: t.colors.glass,
@@ -219,7 +228,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* CURRÍCULO */}
         <View
           style={{
             backgroundColor: t.colors.surfaceAlt,
@@ -301,7 +309,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* SUGESTÕES */}
         <View
           style={{
             backgroundColor: t.colors.surfaceAlt,
@@ -337,7 +344,6 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {/* EXPLORAR CURSOS */}
         <View
           style={{
             backgroundColor: t.colors.glass,

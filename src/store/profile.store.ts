@@ -1,4 +1,3 @@
-// src/store/profile.store.ts
 import { create } from "zustand";
 import {
   fetchUsuarioById,
@@ -6,8 +5,6 @@ import {
   UsuarioResponse,
   UsuarioUpdate,
 } from "../services/profile.service";
-
-const FIXED_USER_ID = 1;
 
 export type Profile = {
   idUsuario: number | null;
@@ -25,7 +22,7 @@ type State = {
   loading: boolean;
   saving: boolean;
   error?: string;
-  load: () => Promise<void>;
+  load: (idUsuario: number | string) => Promise<void>;
   save: () => Promise<void>;
   setField: <K extends keyof Profile>(field: K, value: Profile[K]) => void;
   addSkill: (skill: string) => void;
@@ -58,10 +55,15 @@ export const useProfile = create<State>((set, get) => ({
   saving: false,
   error: undefined,
 
-  async load() {
+  async load(idUsuario) {
+    if (!idUsuario) {
+      set({ error: "Usuário inválido para carregar perfil" });
+      return;
+    }
+
     try {
       set({ loading: true, error: undefined });
-      const dto = await fetchUsuarioById(FIXED_USER_ID);
+      const dto = await fetchUsuarioById(idUsuario);
       set((state) => ({
         profile: mapDtoToProfile(dto, state.profile),
         loading: false,
@@ -71,12 +73,18 @@ export const useProfile = create<State>((set, get) => ({
         loading: false,
         error: err?.message || "Erro ao carregar perfil",
       });
+      throw err;
     }
   },
 
   async save() {
     const { profile } = get();
-    const id = profile.idUsuario ?? FIXED_USER_ID;
+    const id = profile.idUsuario;
+
+    if (!id) {
+      set({ error: "Não foi possível salvar: usuário sem ID" });
+      throw new Error("Usuário sem ID");
+    }
 
     const payload: UsuarioUpdate = {
       nomeUsuario: profile.name || "Usuário R.I.S.E.",
