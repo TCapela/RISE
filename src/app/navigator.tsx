@@ -1,10 +1,12 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { View, Text } from "react-native";
+import { createStackNavigator, CardStyleInterpolators } from "@react-navigation/stack";
+import { View } from "react-native";
 import { Home as HomeIcon, Layers, GraduationCap, HeartPulse } from "lucide-react-native";
 
 import LoginScreen from "./auth/LoginScreen";
 import SignupScreen from "./auth/SignupScreen";
+
 import HomeScreen from "./home/HomeScreen";
 import TracksScreen from "./tracks/TracksScreen";
 import CoursesScreen from "./courses/CoursesScreen";
@@ -22,11 +24,13 @@ import AdminCurriculaScreen from "./admin/AdminCurriculaScreen";
 
 import { useTheme } from "../theme/theme";
 import { useAuth } from "../store/auth.store";
+import AuthSplashScreen from "../app/auth/AuthSplashScreen";
 
-const Auth = createNativeStackNavigator();
+const AuthStack = createStackNavigator();
 const Tabs = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 const AdminStack = createNativeStackNavigator();
+const Root = createNativeStackNavigator();
 
 function MainTabs() {
   const t = useTheme();
@@ -140,28 +144,50 @@ function AdminStackNavigator() {
   );
 }
 
-export function RootNavigator() {
+function AuthNavigator() {
   const t = useTheme();
+  return (
+    <AuthStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        cardStyle: { backgroundColor: t.colors.background },
+        gestureEnabled: true,
+        gestureDirection: "horizontal",
+        cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+        transitionSpec: {
+          open: { animation: "timing", config: { duration: 420 } },
+          close: { animation: "timing", config: { duration: 420 } },
+        },
+      }}
+    >
+      <AuthStack.Screen name="Login" component={LoginScreen} />
+      <AuthStack.Screen name="Signup" component={SignupScreen} />
+      <AuthStack.Screen name="AdminLogin" component={AdminLoginScreen} />
+    </AuthStack.Navigator>
+  );
+}
+
+function UserEntryStack() {
+  return (
+    <Root.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: "fade",
+        animationDuration: 350,
+      }}
+    >
+      <Root.Screen name="AuthSplash" component={AuthSplashScreen} />
+      <Root.Screen name="App" component={AppStack} />
+    </Root.Navigator>
+  );
+}
+
+export function RootNavigator() {
   const { user } = useAuth();
 
-  if (!user) {
-    return (
-      <Auth.Navigator
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: t.colors.background },
-        }}
-      >
-        <Auth.Screen name="Login" component={LoginScreen} />
-        <Auth.Screen name="Signup" component={SignupScreen} />
-        <Auth.Screen name="AdminLogin" component={AdminLoginScreen} />
-      </Auth.Navigator>
-    );
-  }
+  if (!user) return <AuthNavigator />;
 
-  if (user.type === "admin") {
-    return <AdminStackNavigator />;
-  }
+  if (user.type === "admin") return <AdminStackNavigator />;
 
-  return <AppStack />;
+  return <UserEntryStack />;
 }

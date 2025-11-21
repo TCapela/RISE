@@ -64,22 +64,15 @@ export const useAuth = create<AuthState>((set) => ({
 
   signUp: async (name, email, password) => {
     try {
-      const created = await createUser({
+      await createUser({
         name,
         email,
         password,
         type: "user",
       });
 
-      const mappedUser: User = {
-        id: String(created.id),
-        name: created.name,
-        email: created.email,
-        type: (created.type as UserType) || "user",
-      };
-
       setApiAuthToken(null);
-      set({ user: mappedUser, token: null });
+      set({ user: null, token: null });
     } catch (err) {
       setApiAuthToken(null);
       set({ user: null, token: null });
