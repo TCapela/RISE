@@ -25,6 +25,7 @@ import {
   Sparkles,
   CheckCircle2,
   AlertTriangle,
+  ArrowLeft,
 } from "lucide-react-native";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useNavigation } from "@react-navigation/native";
@@ -145,8 +146,39 @@ export default function ProfileScreen() {
           padding: t.spacing.lg,
           gap: t.spacing.lg,
           paddingBottom: insets.bottom + t.spacing.xxl + 80,
+          maxWidth: 940,
+          alignSelf: "center",
+          width: "100%",
         }}
       >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => nav.goBack()}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 999,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: t.colors.surfaceAlt,
+              borderWidth: 1,
+              borderColor: t.colors.border,
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <ArrowLeft color={t.colors.text} size={20} />
+          </TouchableOpacity>
+
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: t.colors.text, fontSize: 22, fontWeight: "900" }}>
+              Perfil
+            </Text>
+            <Text style={{ color: t.colors.textMuted, fontSize: 12, marginTop: 2 }}>
+              Seu perfil guia o currículo inteligente
+            </Text>
+          </View>
+        </View>
+
         <View
           style={{
             backgroundColor: t.colors.glass,

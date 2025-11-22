@@ -1,5 +1,13 @@
-import { View, Text, TouchableOpacity, Linking, ScrollView } from "react-native";
+import React from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Linking,
+  ScrollView,
+} from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import Constants from "expo-constants";
 import { useTheme } from "../../theme/theme";
 import {
   Info,
@@ -8,14 +16,50 @@ import {
   Target,
   HeartHandshake,
   Sparkles,
-  Moon,
+  GitCommitHorizontal,
+  ArrowLeft,
 } from "lucide-react-native";
 
-export default function ConfigScreen() {
+export default function ConfigScreen({ navigation }: any) {
   const t = useTheme();
   const ins = useSafeAreaInsets();
-
   const open = (url: string) => Linking.openURL(url);
+
+  const commitHash =
+    (Constants.expoConfig as any)?.extra?.commitHash ??
+    (Constants.manifest as any)?.extra?.commitHash ??
+    "dev";
+  const shortHash = commitHash === "dev" ? "dev" : commitHash.slice(0, 7);
+
+  const Card = ({ children }: { children: React.ReactNode }) => (
+    <View
+      style={{
+        backgroundColor: t.colors.glass,
+        borderRadius: t.radius.lg,
+        padding: t.spacing.lg,
+        borderWidth: 1,
+        borderColor: t.colors.border,
+        gap: 8,
+      }}
+    >
+      {children}
+    </View>
+  );
+
+  const Tag = ({ label }: { label: string }) => (
+    <View
+      style={{
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 999,
+        backgroundColor: "#1A2035",
+        borderWidth: 1,
+        borderColor: t.colors.border,
+      }}
+    >
+      <Text style={{ color: t.colors.textMuted, fontSize: 11 }}>{label}</Text>
+    </View>
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.colors.background }}>
@@ -24,20 +68,45 @@ export default function ConfigScreen() {
         contentContainerStyle={{
           padding: t.spacing.lg,
           gap: t.spacing.lg,
-          paddingBottom: ins.bottom + t.spacing.xxl + 80,
+          paddingBottom: ins.bottom + 100,
+          maxWidth: 940,
+          alignSelf: "center",
+          width: "100%",
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Info color={t.colors.primary} />
-          <View>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 6,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 999,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: t.colors.surfaceAlt,
+              borderWidth: 1,
+              borderColor: t.colors.border,
+            }}
+          >
+            <ArrowLeft color={t.colors.text} size={20} />
+          </TouchableOpacity>
+
+          <View style={{ flex: 1 }}>
             <Text
               style={{
                 color: t.colors.text,
-                fontSize: 20,
-                fontWeight: "800",
+                fontSize: 22,
+                fontWeight: "900",
               }}
             >
-              Configurações
+              Sobre o R.I.S.E.
             </Text>
             <Text
               style={{
@@ -46,257 +115,133 @@ export default function ConfigScreen() {
                 marginTop: 2,
               }}
             >
-              Aparência do app e informações sobre o R.I.S.E.
+              Requalificação • Inclusão • Sustentabilidade • Empregabilidade
             </Text>
           </View>
-        </View>
-        
-        <View
-          style={{
-            backgroundColor: t.colors.surfaceAlt,
-            borderRadius: t.radius.lg,
-            padding: t.spacing.lg,
-            borderWidth: 1,
-            borderColor: t.colors.border,
-            gap: 6,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Sparkles color={t.colors.primary} />
-            <Text
-              style={{
-                color: t.colors.text,
-                fontWeight: "800",
-              }}
-            >
-              Visão
-            </Text>
-          </View>
-          <Text
-            style={{
-              color: t.colors.textMuted,
-              marginTop: 2,
-            }}
-          >
-            Preparar pessoas para o futuro do trabalho com educação
-            personalizada, bem-estar e conexão com oportunidades reais.
-          </Text>
         </View>
 
-        <View
-          style={{
-            backgroundColor: t.colors.glass,
-            borderRadius: t.radius.lg,
-            padding: t.spacing.lg,
-            borderWidth: 1,
-            borderColor: t.colors.border,
-            gap: 10,
-          }}
-        >
+        <Card>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Sparkles color={t.colors.primary} />
+            <Text style={{ color: t.colors.text, fontWeight: "900" }}>Visão</Text>
+          </View>
+          <Text style={{ color: t.colors.textMuted }}>
+            Tornar a reintegração profissional acessível, inteligente e focada no futuro.
+          </Text>
+        </Card>
+
+        <Card>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Target color={t.colors.primary} />
-            <Text
-              style={{
-                color: t.colors.text,
-                fontWeight: "800",
-              }}
-            >
+            <Text style={{ color: t.colors.text, fontWeight: "900" }}>
               O que você encontra
             </Text>
           </View>
+
           <Text style={{ color: t.colors.textMuted }}>
-            Recomendações de cursos FIAP, trilhas de requalificação, índice de
-            empregabilidade, painel de bem-estar e um roadmap claro da sua
-            jornada.
+            Trilhas, bem-estar, IA aplicada, currículo inteligente e conexão com oportunidades.
           </Text>
 
           <View
             style={{
-              marginTop: 6,
               flexDirection: "row",
-              flexWrap: "wrap",
               gap: 6,
+              flexWrap: "wrap",
+              marginTop: 8,
             }}
           >
-            {[
-              "Trilhas de estudo",
-              "Bem-estar",
-              "Empregabilidade",
-              "Currículo inteligente",
-            ].map((tag) => (
-              <View
-                key={tag}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderRadius: 999,
-                  backgroundColor: "#1A2035",
-                  borderWidth: 1,
-                  borderColor: t.colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    color: t.colors.textMuted,
-                    fontSize: 11,
-                  }}
-                >
-                  {tag}
-                </Text>
-              </View>
+            {["Trilhas", "Bem-estar", "Empregabilidade", "Currículo IA"].map((tag) => (
+              <Tag key={tag} label={tag} />
             ))}
           </View>
-        </View>
+        </Card>
 
-        <View
-          style={{
-            backgroundColor: t.colors.glass,
-            borderRadius: t.radius.lg,
-            padding: t.spacing.lg,
-            borderWidth: 1,
-            borderColor: t.colors.border,
-            gap: 10,
-          }}
-        >
+        <Card>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <School color={t.colors.primary} />
-            <Text
-              style={{
-                color: t.colors.text,
-                fontWeight: "800",
-              }}
-            >
+            <Text style={{ color: t.colors.text, fontWeight: "900" }}>
               Conexão FIAP
             </Text>
           </View>
+
           <Text style={{ color: t.colors.textMuted }}>
-            Integração com cursos reais de Graduação, Pós e Extensão. Os links
-            direcionam para as páginas oficiais da FIAP.
+            Conteúdos alinhados com o ecossistema de inovação e educação FIAP.
           </Text>
+
           <TouchableOpacity
             onPress={() => open("https://www.fiap.com.br/")}
             style={{
+              marginTop: 8,
               alignSelf: "flex-start",
               backgroundColor: t.colors.primary,
               paddingHorizontal: 14,
               paddingVertical: 10,
               borderRadius: t.radius.md,
-              marginTop: 6,
               flexDirection: "row",
               alignItems: "center",
-              gap: 8,
+              gap: 6,
             }}
           >
             <Globe color="#0B0D13" size={16} />
-            <Text
-              style={{
-                color: "#0B0D13",
-                fontWeight: "800",
-              }}
-            >
-              Visitar FIAP
-            </Text>
+            <Text style={{ color: "#0B0D13", fontWeight: "900" }}>Visitar FIAP</Text>
           </TouchableOpacity>
-        </View>
+        </Card>
 
-        <View
-          style={{
-            backgroundColor: t.colors.surfaceAlt,
-            borderRadius: t.radius.lg,
-            padding: t.spacing.lg,
-            borderWidth: 1,
-            borderColor: t.colors.border,
-            gap: 10,
-          }}
-        >
+        <Card>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <HeartHandshake color={t.colors.primary} />
-            <Text
-              style={{
-                color: t.colors.text,
-                fontWeight: "800",
-              }}
-            >
+            <Text style={{ color: t.colors.text, fontWeight: "900" }}>
               ODS e impacto
             </Text>
           </View>
+
           <Text style={{ color: t.colors.textMuted }}>
-            ODS 4, 8, 9 e 10 guiando o desenvolvimento: educação de qualidade,
-            trabalho decente, inovação e redução de desigualdades.
+            Alinhado às ODS 4, 8, 9 e 10 para impacto social real.
           </Text>
 
           <View
             style={{
-              marginTop: 6,
               flexDirection: "row",
+              gap: 6,
               flexWrap: "wrap",
+              marginTop: 8,
+            }}
+          >
+            {["ODS 4", "ODS 8", "ODS 9", "ODS 10"].map((o) => (
+              <Tag key={o} label={o} />
+            ))}
+          </View>
+        </Card>
+
+        <Card>
+          <Text style={{ color: t.colors.text, fontWeight: "900" }}>
+            Versão & Créditos
+          </Text>
+
+          <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
+            Design e desenvolvimento:
+          </Text>
+          <Text style={{ color: t.colors.text, fontWeight: "800" }}>
+            Tiago Capela • RM 558021
+          </Text>
+          <Text style={{ color: t.colors.text, fontWeight: "800" }}>
+            Raphaella Tatto • RM 554983
+          </Text>
+
+          <View
+            style={{
+              marginTop: 12,
+              flexDirection: "row",
+              alignItems: "center",
               gap: 6,
             }}
           >
-            {["ODS 4", "ODS 8", "ODS 9", "ODS 10"].map((item) => (
-              <View
-                key={item}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderRadius: 999,
-                  backgroundColor: "#1A2035",
-                  borderWidth: 1,
-                  borderColor: t.colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    color: t.colors.textMuted,
-                    fontSize: 11,
-                  }}
-                >
-                  {item}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View
-          style={{
-            backgroundColor: t.colors.glass,
-            borderRadius: t.radius.lg,
-            padding: t.spacing.lg,
-            borderWidth: 1,
-            borderColor: t.colors.border,
-            gap: 8,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Globe color={t.colors.primary} />
-            <Text
-              style={{
-                color: t.colors.text,
-                fontWeight: "800",
-              }}
-            >
-              Versão e créditos
+            <GitCommitHorizontal color={t.colors.textMuted} size={14} />
+            <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
+              Commit: {shortHash}
             </Text>
           </View>
-          <Text
-            style={{
-              color: t.colors.textMuted,
-              fontSize: 12,
-            }}
-          >
-            Versão 0.1.0 • GS Mobile
-          </Text>
-          <Text
-            style={{
-              color: t.colors.textMuted,
-              fontSize: 12,
-            }}
-          >
-            Design e desenvolvimento: você + equipe FIAP, construindo um
-            protótipo que poderia virar produto real.
-          </Text>
-        </View>
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );

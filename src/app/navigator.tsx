@@ -14,7 +14,6 @@ import WellbeingScreen from "./wellbeing/WellbeingScreen";
 import ProfileScreen from "./profile/ProfileScreen";
 import CurriculoScreen from "./profile/CurriculoScreen";
 import ConfigScreen from "./settings/ConfigScreen";
-import AboutScreen from "./settings/AboutScreen";
 
 import AdminLoginScreen from "./admin/AdminLoginScreen";
 import AdminHomeScreen from "./admin/AdminHomeScreen";
@@ -102,14 +101,15 @@ function AppStack() {
       }}
     >
       <Stack.Screen name="Tabs" component={MainTabs} options={{ headerShown: false }} />
-      <Stack.Screen name="Perfil" component={ProfileScreen} />
       <Stack.Screen
-        name="Currículo"
-        component={CurriculoScreen}
-        options={{ headerShown: false }}
+        name="Perfil"
+        component={ProfileScreen}
+        options={({ navigation }) => ({
+          headerShown: false,
+        })}
       />
-      <Stack.Screen name="Config" component={ConfigScreen} options={{ title: "Configurações" }} />
-      <Stack.Screen name="Sobre" component={AboutScreen} />
+      <Stack.Screen name="Currículo" component={CurriculoScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Config" component={ConfigScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -124,26 +124,10 @@ function AdminStackNavigator() {
         contentStyle: { backgroundColor: t.colors.background },
       }}
     >
-      <AdminStack.Screen
-        name="AdminHome"
-        component={AdminHomeScreen}
-        options={{ headerShown: false }}
-      />
-      <AdminStack.Screen
-        name="AdminCourses"
-        component={AdminCoursesScreen}
-        options={{ title: "Cursos" }}
-      />
-      <AdminStack.Screen
-        name="AdminUsers"
-        component={AdminUsersScreen}
-        options={{ title: "Usuários" }}
-      />
-      <AdminStack.Screen
-        name="AdminCurricula"
-        component={AdminCurriculaScreen}
-        options={{ title: "Currículos" }}
-      />
+      <AdminStack.Screen name="AdminHome" component={AdminHomeScreen} options={{ headerShown: false }} />
+      <AdminStack.Screen name="AdminCourses" component={AdminCoursesScreen} options={{ title: "Cursos" }} />
+      <AdminStack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ title: "Usuários" }} />
+      <AdminStack.Screen name="AdminCurricula" component={AdminCurriculaScreen} options={{ title: "Currículos" }} />
     </AdminStack.Navigator>
   );
 }
@@ -190,8 +174,6 @@ export function RootNavigator() {
   const { user } = useAuth();
 
   if (!user) return <AuthNavigator />;
-
   if (user.type === "admin") return <AdminStackNavigator />;
-
   return <UserEntryStack />;
 }

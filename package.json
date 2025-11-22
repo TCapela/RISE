@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
+    "prestart": "powershell -ExecutionPolicy Bypass -File ./git-commit-hash.ps1",
+    "preandroid": "powershell -ExecutionPolicy Bypass -File ./git-commit-hash.ps1",
+    "preios": "powershell -ExecutionPolicy Bypass -File ./git-commit-hash.ps1",
+    "preweb": "powershell -ExecutionPolicy Bypass -File ./git-commit-hash.ps1",
+
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
