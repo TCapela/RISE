@@ -17,7 +17,7 @@ import ConfigScreen from "./settings/ConfigScreen";
 import AboutScreen from "./settings/AboutScreen";
 
 import AdminLoginScreen from "./admin/AdminLoginScreen";
-import AdminHomeScreen from "./admin/AdminHomeSreen";
+import AdminHomeScreen from "./admin/AdminHomeScreen";
 import AdminCoursesScreen from "./admin/AdminCoursesScreen";
 import AdminUsersScreen from "./admin/AdminUsersScreen";
 import AdminCurriculaScreen from "./admin/AdminCurriculaScreen";
@@ -127,7 +127,7 @@ function AdminStackNavigator() {
       <AdminStack.Screen
         name="AdminHome"
         component={AdminHomeScreen}
-        options={{ title: "Painel Administrativo" }}
+        options={{ headerShown: false }}
       />
       <AdminStack.Screen
         name="AdminCourses"

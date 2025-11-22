@@ -35,6 +35,7 @@ import {
   User,
   Sparkles,
   ArrowLeft,
+  Wand2,
 } from "lucide-react-native";
 import {
   getCurriculoByUser,
@@ -42,6 +43,12 @@ import {
 } from "../../services/curriculo.service";
 import { gerarCurriculoPDF } from "../../services/curriculoPdf.service";
 import { Exp, Edu, Proj, Cert, Lnk } from "../../types/curriculo.types";
+import {
+  getAiCurriculoFeedback,
+  postAiCurriculoFeedback,
+  AiCurriculoFeedbackResponse,
+} from "../../services/ai.curriculo.service";
+import { fetchAdminCourses } from "../../services/admin.courses.service";
 
 function fmtDateTime(iso?: string | null) {
   if (!iso) return null;
@@ -79,10 +86,22 @@ export const Section = React.memo(
         gap: t.spacing.md,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           {icon}
-          <Text style={{ color: t.colors.text, fontSize: 16, fontWeight: "900" }}>
+          <Text
+            style={{
+              color: t.colors.text,
+              fontSize: 16,
+              fontWeight: "900",
+            }}
+          >
             {title}
           </Text>
         </View>
@@ -165,6 +184,12 @@ export default function CurriculoScreen({ navigation }: any) {
   const [curriculoId, setCurriculoId] = useState<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
+  const [loadingAi, setLoadingAi] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiFeedback, setAiFeedback] = useState<AiCurriculoFeedbackResponse | null>(null);
+
+  const [coursesById, setCoursesById] = useState<Record<number, string>>({});
+
   const lastSavedSnapshot = useRef<string>("");
 
   const userId =
@@ -183,9 +208,11 @@ export default function CurriculoScreen({ navigation }: any) {
           setCurriculoId(cv.idCurriculo);
           setLastUpdated(cv.lastUpdated ?? null);
           if (cv.summary) setSummary(cv.summary);
-          if (Array.isArray(cv.experiences)) setExperiences(cv.experiences as Exp[]);
+          if (Array.isArray(cv.experiences))
+            setExperiences(cv.experiences as Exp[]);
           if (Array.isArray(cv.edu)) setEdu(cv.edu as Edu[]);
-          if (Array.isArray(cv.projects)) setProjects(cv.projects as Proj[]);
+          if (Array.isArray(cv.projects))
+            setProjects(cv.projects as Proj[]);
           if (Array.isArray(cv.certs)) setCerts(cv.certs as Cert[]);
           if (Array.isArray(cv.links)) setLinks(cv.links as Lnk[]);
           const existingSkills = profile.skills || [];
@@ -216,12 +243,45 @@ export default function CurriculoScreen({ navigation }: any) {
     loadCv();
   }, [userId]);
 
+  useEffect(() => {
+    const loadCourses = async () => {
+      try {
+        const list = await fetchAdminCourses();
+        const map: Record<number, string> = {};
+        list.forEach((c) => (map[Number(c.raw.idCurso)] = c.title));
+        setCoursesById(map);
+      } catch {}
+    };
+    loadCourses();
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const loadAiSnapshot = async () => {
+      try {
+        setLoadingAi(true);
+        setAiError(null);
+        const snap = await getAiCurriculoFeedback(userId);
+        setAiFeedback(snap);
+      } catch {
+        setAiFeedback(null);
+      } finally {
+        setLoadingAi(false);
+      }
+    };
+
+    loadAiSnapshot();
+  }, [userId]);
+
+
   const persistProfileBasics = () => {
     setField("name", name);
     setField("email", email);
     setField("role", role);
     setField("phone", phone);
     setField("bio", summary);
+    setField("location" as any, location);
   };
 
   const completeness = useMemo(() => {
@@ -299,12 +359,16 @@ export default function CurriculoScreen({ navigation }: any) {
     if (!role.trim()) s.push("Defina um cargo ou objetivo profissional.");
     if (!phone.trim()) s.push("Inclua um telefone para contato.");
 
-    if (summary.trim().length < 60) s.push("Escreva um resumo mais completo (3–4 linhas).");
-    if (skillsCount < 3) s.push(`Adicione pelo menos ${3 - skillsCount} habilidade(s).`);
+    if (summary.trim().length < 60)
+      s.push("Escreva um resumo mais completo (3–4 linhas).");
+    if (skillsCount < 3)
+      s.push(`Adicione pelo menos ${3 - skillsCount} habilidade(s).`);
 
-    if (experiences.length === 0) s.push("Inclua ao menos uma experiência profissional.");
+    if (experiences.length === 0)
+      s.push("Inclua ao menos uma experiência profissional.");
     if (edu.length === 0) s.push("Inclua ao menos uma formação.");
-    if (projects.length === 0 && certs.length === 0) s.push("Adicione um projeto ou certificação.");
+    if (projects.length === 0 && certs.length === 0)
+      s.push("Adicione um projeto ou certificação.");
     if (links.length === 0) s.push("Inclua um link profissional.");
 
     return s;
@@ -357,7 +421,8 @@ export default function CurriculoScreen({ navigation }: any) {
     setLinkDraft({ label: "", url: "" });
   };
 
-  const removeAt = <T,>(arr: T[], i: number) => arr.filter((_, idx) => idx !== i);
+  const removeAt = <T,>(arr: T[], i: number) =>
+    arr.filter((_, idx) => idx !== i);
 
   const handleSave = async () => {
     if (!userId) {
@@ -424,6 +489,52 @@ export default function CurriculoScreen({ navigation }: any) {
     });
   };
 
+  const handleAnalyzeAi = async () => {
+    if (!userId) {
+      Alert.alert("Erro", "Usuário não identificado.");
+      return;
+    }
+
+    try {
+      setLoadingAi(true);
+      setAiError(null);
+
+      persistProfileBasics();
+
+      const payload = {
+        idUsuario: userId,
+        nome: name,
+        email,
+        cargoObjetivo: role,
+        resumo: summary,
+        skills: profile.skills || [],
+        experiences,
+        education: edu,
+        projects,
+        certs,
+        links,
+        completenessApp: completeness,
+      };
+
+      const res = await postAiCurriculoFeedback(payload);
+      setAiFeedback(res);
+    } catch {
+      setAiError("Não foi possível gerar feedback agora.");
+    } finally {
+      setLoadingAi(false);
+    }
+  };
+
+
+  const applySuggestedSummary = () => {
+    if (!aiFeedback?.summarySuggested) return;
+    setSummary(aiFeedback.summarySuggested);
+    setAiFeedback((prev) =>
+      prev ? { ...prev, summarySuggested: null } : prev
+    );
+    Alert.alert("Pronto", "Resumo sugerido aplicado. Salve para persistir.");
+  };
+
   const initials = name
     .split(" ")
     .filter(Boolean)
@@ -447,7 +558,13 @@ export default function CurriculoScreen({ navigation }: any) {
           borderBottomColor: t.colors.border,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={{
@@ -466,10 +583,18 @@ export default function CurriculoScreen({ navigation }: any) {
           </TouchableOpacity>
 
           <View style={{ alignItems: "center", flex: 1 }}>
-            <Text style={{ color: t.colors.text, fontSize: 18, fontWeight: "900" }}>
+            <Text
+              style={{ color: t.colors.text, fontSize: 18, fontWeight: "900" }}
+            >
               Currículo
             </Text>
-            <Text style={{ color: t.colors.textMuted, fontSize: 12, marginTop: 2 }}>
+            <Text
+              style={{
+                color: t.colors.textMuted,
+                fontSize: 12,
+                marginTop: 2,
+              }}
+            >
               {editing ? "Modo edição" : "Visualização"}
             </Text>
           </View>
@@ -503,7 +628,13 @@ export default function CurriculoScreen({ navigation }: any) {
             alignItems: isNarrow ? "stretch" : "center",
           }}
         >
-          <View style={{ alignItems: "center", justifyContent: "center", alignSelf: isNarrow ? "center" : "flex-start" }}>
+          <View
+            style={{
+              alignItems: "center",
+              justifyContent: "center",
+              alignSelf: isNarrow ? "center" : "flex-start",
+            }}
+          >
             <Svg width={size} height={size}>
               <Circle
                 cx={size / 2}
@@ -521,9 +652,6 @@ export default function CurriculoScreen({ navigation }: any) {
                 strokeWidth={stroke}
                 strokeDasharray={`${c * (completeness / 100)}, ${c}`}
                 strokeLinecap="round"
-                rotation="-90"
-                originX={size / 2}
-                originY={size / 2}
                 fill="none"
               />
             </Svg>
@@ -537,7 +665,13 @@ export default function CurriculoScreen({ navigation }: any) {
             >
               {completeness}%
             </Text>
-            <Text style={{ color: t.colors.textMuted, fontSize: 11, marginTop: 6 }}>
+            <Text
+              style={{
+                color: t.colors.textMuted,
+                fontSize: 11,
+                marginTop: 6,
+              }}
+            >
               Completude
             </Text>
           </View>
@@ -557,7 +691,13 @@ export default function CurriculoScreen({ navigation }: any) {
                 }}
               >
                 {initials ? (
-                  <Text style={{ color: t.colors.primary, fontSize: 18, fontWeight: "900" }}>
+                  <Text
+                    style={{
+                      color: t.colors.primary,
+                      fontSize: 18,
+                      fontWeight: "900",
+                    }}
+                  >
                     {initials}
                   </Text>
                 ) : (
@@ -565,17 +705,28 @@ export default function CurriculoScreen({ navigation }: any) {
                 )}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: t.colors.text, fontSize: 20, fontWeight: "900" }}>
+                <Text
+                  style={{ color: t.colors.text, fontSize: 20, fontWeight: "900" }}
+                >
                   Currículo Inteligente
                 </Text>
                 <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
-                  {lastUpdated ? `Atualizado em ${fmtDateTime(lastUpdated)}` : "Ainda não salvo no banco"}
+                  {lastUpdated
+                    ? `Atualizado em ${fmtDateTime(lastUpdated)}`
+                    : "Ainda não salvo no banco"}
                 </Text>
               </View>
             </View>
 
             {loading && (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 6,
+                }}
+              >
                 <ActivityIndicator size="small" color={t.colors.primary} />
                 <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
                   Carregando currículo...
@@ -586,8 +737,19 @@ export default function CurriculoScreen({ navigation }: any) {
             {!loading && completeness < 100 && suggestions.length > 0 && (
               <View style={{ marginTop: 4, gap: 4 }}>
                 {suggestions.slice(0, 2).map((sug, idx) => (
-                  <View key={idx} style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
-                    <CheckCircle color={t.colors.primary} size={14} style={{ marginTop: 2 }} />
+                  <View
+                    key={idx}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "flex-start",
+                      gap: 6,
+                    }}
+                  >
+                    <CheckCircle
+                      color={t.colors.primary}
+                      size={14}
+                      style={{ marginTop: 2 }}
+                    />
                     <Text style={{ color: t.colors.textMuted, flex: 1 }}>
                       {sug}
                     </Text>
@@ -597,35 +759,256 @@ export default function CurriculoScreen({ navigation }: any) {
             )}
           </View>
 
-          <TouchableOpacity
-            onPress={() => (editing ? handleSave() : setEditing(true))}
-            disabled={saving}
-            style={{
-              backgroundColor: editing ? t.colors.primary : t.colors.surfaceAlt,
-              borderWidth: editing ? 0 : 1,
-              borderColor: t.colors.border,
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: t.radius.pill,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              opacity: saving ? 0.7 : 1,
-              alignSelf: isNarrow ? "flex-end" : "auto",
-            }}
-          >
-            {editing ? (
-              <Save color="#0B0D13" size={16} />
-            ) : (
-              <Edit3 color={t.colors.text} size={16} />
-            )}
-            <Text style={{ color: editing ? "#0B0D13" : t.colors.text, fontWeight: "900" }}>
-              {editing ? (saving ? "Salvando..." : dirty ? "Salvar" : "Concluir") : "Editar"}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ gap: 8, alignItems: "flex-end" }}>
+            <TouchableOpacity
+              onPress={() => (editing ? handleSave() : setEditing(true))}
+              disabled={saving}
+              style={{
+                backgroundColor: editing
+                  ? t.colors.primary
+                  : t.colors.surfaceAlt,
+                borderWidth: editing ? 0 : 1,
+                borderColor: t.colors.border,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderRadius: t.radius.pill,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {editing ? (
+                <Save color="#0B0D13" size={16} />
+              ) : (
+                <Edit3 color={t.colors.text} size={16} />
+              )}
+              <Text
+                style={{
+                  color: editing ? "#0B0D13" : t.colors.text,
+                  fontWeight: "900",
+                }}
+              >
+                {editing
+                  ? saving
+                    ? "Salvando..."
+                    : dirty
+                    ? "Salvar"
+                    : "Concluir"
+                  : "Editar"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleAnalyzeAi}
+              disabled={loadingAi}
+              style={{
+                backgroundColor: "#1A2035",
+                borderRadius: t.radius.pill,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderWidth: 1,
+                borderColor: t.colors.border,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                opacity: loadingAi ? 0.7 : 1,
+              }}
+            >
+              {loadingAi ? (
+                <ActivityIndicator size="small" color={t.colors.primary} />
+              ) : (
+                <Wand2 color={t.colors.primary} size={16} />
+              )}
+              <Text style={{ color: t.colors.text, fontWeight: "900" }}>
+                {loadingAi ? "Analisando..." : "Analisar com IA"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <Section t={t} title="Informações pessoais" icon={<User color={t.colors.primary} />}>
+        {aiError && (
+          <View
+            style={{
+              backgroundColor: t.colors.surfaceAlt,
+              borderRadius: t.radius.lg,
+              borderWidth: 1,
+              borderColor: t.colors.border,
+              padding: t.spacing.lg,
+            }}
+          >
+            <Text style={{ color: "#ff6b6b", fontWeight: "800" }}>
+              {aiError}
+            </Text>
+          </View>
+        )}
+
+        {aiFeedback && (
+          <Section
+            t={t}
+            title="Feedback da IA"
+            icon={<Sparkles color={t.colors.primary} />}
+            right={
+              aiFeedback.summarySuggested ? (
+                <TouchableOpacity
+                  onPress={applySuggestedSummary}
+                  style={{
+                    backgroundColor: t.colors.primary,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: t.radius.pill,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#0B0D13",
+                      fontWeight: "900",
+                      fontSize: 12,
+                    }}
+                  >
+                    Aplicar resumo
+                  </Text>
+                </TouchableOpacity>
+              ) : null
+            }
+          >
+            <Card t={t}>
+              <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
+                Score de empregabilidade
+              </Text>
+              <Text
+                style={{ color: t.colors.text, fontSize: 26, fontWeight: "900" }}
+              >
+                {aiFeedback.score}/100
+              </Text>
+              {aiFeedback.raw ? (
+                <Text style={{ color: t.colors.textMuted, marginTop: 6 }}>
+                  {aiFeedback.raw}
+                </Text>
+              ) : null}
+            </Card>
+
+            {aiFeedback.summarySuggested && (
+              <Card t={t}>
+                <Text style={{ color: t.colors.text, fontWeight: "900" }}>
+                  Resumo sugerido
+                </Text>
+                <Text style={{ color: t.colors.textMuted, marginTop: 6 }}>
+                  {aiFeedback.summarySuggested}
+                </Text>
+              </Card>
+            )}
+
+            {aiFeedback.gaps?.length > 0 && (
+              <Card t={t}>
+                <Text style={{ color: t.colors.text, fontWeight: "900" }}>
+                  Pontos de melhoria
+                </Text>
+                <View style={{ gap: 6, marginTop: 6 }}>
+                  {aiFeedback.gaps.map((g, i) => (
+                    <View
+                      key={i}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "flex-start",
+                        gap: 6,
+                      }}
+                    >
+                      <CheckCircle
+                        color={t.colors.primary}
+                        size={14}
+                        style={{ marginTop: 2 }}
+                      />
+                      <Text style={{ color: t.colors.textMuted, flex: 1 }}>
+                        {g}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </Card>
+            )}
+
+            {aiFeedback.suggestedBullets?.length > 0 && (
+              <Card t={t}>
+                <Text style={{ color: t.colors.text, fontWeight: "900" }}>
+                  Bullet points sugeridos
+                </Text>
+
+                <View style={{ gap: 10, marginTop: 6 }}>
+                  {aiFeedback.suggestedBullets.map((b, i) => (
+                    <View key={i} style={{ gap: 6 }}>
+                      <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
+                        {b.section} • item {b.index + 1}
+                      </Text>
+                      {b.bullets.map((blt, j) => (
+                        <Text key={j} style={{ color: t.colors.text }}>
+                          • {blt}
+                        </Text>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              </Card>
+            )}
+
+            {aiFeedback.recommendedCourses?.length > 0 && (
+              <Card t={t}>
+                <Text style={{ color: t.colors.text, fontWeight: "900" }}>
+                  Cursos recomendados
+                </Text>
+
+                <View style={{ gap: 10, marginTop: 6 }}>
+                  {aiFeedback.recommendedCourses.map((rc, i) => (
+                    <View key={i} style={{ gap: 4 }}>
+                      <Text
+                        style={{ color: t.colors.text, fontWeight: "800" }}
+                      >
+                        {coursesById[rc.idCurso] || `Curso #${rc.idCurso}`}
+                      </Text>
+                      {rc.reason ? (
+                        <Text style={{ color: t.colors.textMuted }}>
+                          {rc.reason}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              </Card>
+            )}
+
+            {aiFeedback.interviewPrep &&
+              aiFeedback.interviewPrep.questions?.length > 0 && (
+                <Card t={t}>
+                  <Text style={{ color: t.colors.text, fontWeight: "900" }}>
+                    Preparação para entrevista
+                  </Text>
+
+                  <View style={{ gap: 10, marginTop: 6 }}>
+                    {aiFeedback.interviewPrep.questions.map((q, i) => (
+                      <View key={i} style={{ gap: 4 }}>
+                        <Text
+                          style={{ color: t.colors.text, fontWeight: "800" }}
+                        >
+                          {i + 1}. {q}
+                        </Text>
+                        {aiFeedback.interviewPrep?.answersDraft?.[i] ? (
+                          <Text style={{ color: t.colors.textMuted }}>
+                            {aiFeedback.interviewPrep.answersDraft[i]}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                </Card>
+              )}
+          </Section>
+        )}
+
+        <Section
+          t={t}
+          title="Informações pessoais"
+          icon={<User color={t.colors.primary} />}
+        >
           <View style={{ gap: t.spacing.sm }}>
             <TextInput
               editable={editing}
@@ -680,7 +1063,12 @@ export default function CurriculoScreen({ navigation }: any) {
               }}
             />
 
-            <View style={{ flexDirection: isNarrow ? "column" : "row", gap: t.spacing.sm }}>
+            <View
+              style={{
+                flexDirection: isNarrow ? "column" : "row",
+                gap: t.spacing.sm,
+              }}
+            >
               <TextInput
                 editable={editing}
                 value={phone}
@@ -737,9 +1125,18 @@ export default function CurriculoScreen({ navigation }: any) {
           </View>
         </Section>
 
-        <Section t={t} title="Habilidades" icon={<Sparkles color={t.colors.accent} />}>
+        <Section
+          t={t}
+          title="Habilidades"
+          icon={<Sparkles color={t.colors.accent} />}
+        >
           {editing && (
-            <View style={{ flexDirection: isNarrow ? "column" : "row", gap: t.spacing.sm }}>
+            <View
+              style={{
+                flexDirection: isNarrow ? "column" : "row",
+                gap: t.spacing.sm,
+              }}
+            >
               <TextInput
                 value={skillsInput}
                 onChangeText={setSkillsInput}
@@ -776,7 +1173,9 @@ export default function CurriculoScreen({ navigation }: any) {
                 }}
               >
                 <Plus color="#0B0D13" />
-                <Text style={{ color: "#0B0D13", fontWeight: "900" }}>Add</Text>
+                <Text style={{ color: "#0B0D13", fontWeight: "900" }}>
+                  Add
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -804,7 +1203,10 @@ export default function CurriculoScreen({ navigation }: any) {
                   {item}
                 </Text>
                 {editing && (
-                  <TouchableOpacity onPress={() => removeSkill(item)} style={{ marginLeft: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => removeSkill(item)}
+                    style={{ marginLeft: 8 }}
+                  >
                     <X color={t.colors.tabInactive} size={16} />
                   </TouchableOpacity>
                 )}
@@ -818,7 +1220,11 @@ export default function CurriculoScreen({ navigation }: any) {
           />
         </Section>
 
-        <Section t={t} title="Experiência" icon={<Briefcase color={t.colors.primary} />}>
+        <Section
+          t={t}
+          title="Experiência"
+          icon={<Briefcase color={t.colors.primary} />}
+        >
           {editing && (
             <Card t={t}>
               <TextInput
@@ -851,7 +1257,12 @@ export default function CurriculoScreen({ navigation }: any) {
                   height: 44,
                 }}
               />
-              <View style={{ flexDirection: isNarrow ? "column" : "row", gap: t.spacing.sm }}>
+              <View
+                style={{
+                  flexDirection: isNarrow ? "column" : "row",
+                  gap: t.spacing.sm,
+                }}
+              >
                 <TextInput
                   value={expDraft.start}
                   onChangeText={(v) => setExpDraft({ ...expDraft, start: v })}
@@ -921,7 +1332,13 @@ export default function CurriculoScreen({ navigation }: any) {
           <View style={{ gap: t.spacing.sm }}>
             {experiences.map((e, i) => (
               <Card t={t} key={`${e.role}-${i}`}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 6 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    gap: 6,
+                  }}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: t.colors.text, fontWeight: "900" }}>
                       {e.role}
@@ -931,12 +1348,18 @@ export default function CurriculoScreen({ navigation }: any) {
                     </Text>
                   </View>
                   {editing && (
-                    <TouchableOpacity onPress={() => setExperiences(removeAt(experiences, i))}>
+                    <TouchableOpacity
+                      onPress={() => setExperiences(removeAt(experiences, i))}
+                    >
                       <X color={t.colors.tabInactive} />
                     </TouchableOpacity>
                   )}
                 </View>
-                {!!e.desc && <Text style={{ color: t.colors.text, marginTop: 6 }}>{e.desc}</Text>}
+                {!!e.desc && (
+                  <Text style={{ color: t.colors.text, marginTop: 6 }}>
+                    {e.desc}
+                  </Text>
+                )}
               </Card>
             ))}
             {!experiences.length && (
@@ -947,7 +1370,11 @@ export default function CurriculoScreen({ navigation }: any) {
           </View>
         </Section>
 
-        <Section t={t} title="Formação" icon={<GraduationCap color={t.colors.accent} />}>
+        <Section
+          t={t}
+          title="Formação"
+          icon={<GraduationCap color={t.colors.accent} />}
+        >
           {editing && (
             <Card t={t}>
               <TextInput
@@ -980,7 +1407,12 @@ export default function CurriculoScreen({ navigation }: any) {
                   height: 44,
                 }}
               />
-              <View style={{ flexDirection: isNarrow ? "column" : "row", gap: t.spacing.sm }}>
+              <View
+                style={{
+                  flexDirection: isNarrow ? "column" : "row",
+                  gap: t.spacing.sm,
+                }}
+              >
                 <TextInput
                   value={eduDraft.start}
                   onChangeText={(v) => setEduDraft({ ...eduDraft, start: v })}
@@ -1034,7 +1466,13 @@ export default function CurriculoScreen({ navigation }: any) {
           <View style={{ gap: t.spacing.sm }}>
             {edu.map((e, i) => (
               <Card t={t} key={`${e.course}-${i}`}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 6 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    gap: 6,
+                  }}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: t.colors.text, fontWeight: "900" }}>
                       {e.course}
@@ -1059,7 +1497,11 @@ export default function CurriculoScreen({ navigation }: any) {
           </View>
         </Section>
 
-        <Section t={t} title="Projetos" icon={<FolderGit2 color={t.colors.primary} />}>
+        <Section
+          t={t}
+          title="Projetos"
+          icon={<FolderGit2 color={t.colors.primary} />}
+        >
           {editing && (
             <Card t={t}>
               <TextInput
@@ -1129,12 +1571,26 @@ export default function CurriculoScreen({ navigation }: any) {
           <View style={{ gap: t.spacing.sm }}>
             {projects.map((p, i) => (
               <Card t={t} key={`${p.name}-${i}`}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 6 }}>
-                  <Text style={{ color: t.colors.text, fontWeight: "900", flex: 1 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    gap: 6,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: t.colors.text,
+                      fontWeight: "900",
+                      flex: 1,
+                    }}
+                  >
                     {p.name}
                   </Text>
                   {editing && (
-                    <TouchableOpacity onPress={() => setProjects(removeAt(projects, i))}>
+                    <TouchableOpacity
+                      onPress={() => setProjects(removeAt(projects, i))}
+                    >
                       <X color={t.colors.tabInactive} />
                     </TouchableOpacity>
                   )}
@@ -1142,7 +1598,12 @@ export default function CurriculoScreen({ navigation }: any) {
                 {!!p.link && (
                   <TouchableOpacity
                     onPress={() => Linking.openURL(p.link!)}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      marginTop: 4,
+                    }}
                   >
                     <LinkIcon color={t.colors.primary} size={16} />
                     <Text style={{ color: t.colors.primary }} numberOfLines={1}>
@@ -1150,7 +1611,11 @@ export default function CurriculoScreen({ navigation }: any) {
                     </Text>
                   </TouchableOpacity>
                 )}
-                {!!p.desc && <Text style={{ color: t.colors.text, marginTop: 6 }}>{p.desc}</Text>}
+                {!!p.desc && (
+                  <Text style={{ color: t.colors.text, marginTop: 6 }}>
+                    {p.desc}
+                  </Text>
+                )}
               </Card>
             ))}
             {!projects.length && (
@@ -1161,7 +1626,11 @@ export default function CurriculoScreen({ navigation }: any) {
           </View>
         </Section>
 
-        <Section t={t} title="Certificações" icon={<BadgeCheck color={t.colors.accent} />}>
+        <Section
+          t={t}
+          title="Certificações"
+          icon={<BadgeCheck color={t.colors.accent} />}
+        >
           {editing && (
             <Card t={t}>
               <TextInput
@@ -1179,7 +1648,12 @@ export default function CurriculoScreen({ navigation }: any) {
                   height: 44,
                 }}
               />
-              <View style={{ flexDirection: isNarrow ? "column" : "row", gap: t.spacing.sm }}>
+              <View
+                style={{
+                  flexDirection: isNarrow ? "column" : "row",
+                  gap: t.spacing.sm,
+                }}
+              >
                 <TextInput
                   value={certDraft.org}
                   onChangeText={(v) => setCertDraft({ ...certDraft, org: v })}
@@ -1233,7 +1707,13 @@ export default function CurriculoScreen({ navigation }: any) {
           <View style={{ gap: t.spacing.sm }}>
             {certs.map((cItem, i) => (
               <Card t={t} key={`${cItem.name}-${i}`}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 6 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    gap: 6,
+                  }}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: t.colors.text, fontWeight: "900" }}>
                       {cItem.name}
@@ -1243,7 +1723,9 @@ export default function CurriculoScreen({ navigation }: any) {
                     </Text>
                   </View>
                   {editing && (
-                    <TouchableOpacity onPress={() => setCerts(removeAt(certs, i))}>
+                    <TouchableOpacity
+                      onPress={() => setCerts(removeAt(certs, i))}
+                    >
                       <X color={t.colors.tabInactive} />
                     </TouchableOpacity>
                   )}
@@ -1261,10 +1743,17 @@ export default function CurriculoScreen({ navigation }: any) {
         <Section t={t} title="Links" icon={<LinkIcon color={t.colors.primary} />}>
           {editing && (
             <Card t={t}>
-              <View style={{ flexDirection: isNarrow ? "column" : "row", gap: t.spacing.sm }}>
+              <View
+                style={{
+                  flexDirection: isNarrow ? "column" : "row",
+                  gap: t.spacing.sm,
+                }}
+              >
                 <TextInput
                   value={linkDraft.label}
-                  onChangeText={(v) => setLinkDraft({ ...linkDraft, label: v })}
+                  onChangeText={(v) =>
+                    setLinkDraft({ ...linkDraft, label: v })
+                  }
                   placeholder="Rótulo (ex.: GitHub)"
                   placeholderTextColor={t.colors.tabInactive}
                   style={{
@@ -1280,7 +1769,9 @@ export default function CurriculoScreen({ navigation }: any) {
                 />
                 <TextInput
                   value={linkDraft.url}
-                  onChangeText={(v) => setLinkDraft({ ...linkDraft, url: v })}
+                  onChangeText={(v) =>
+                    setLinkDraft({ ...linkDraft, url: v })
+                  }
                   placeholder="URL"
                   placeholderTextColor={t.colors.tabInactive}
                   autoCapitalize="none"
@@ -1318,13 +1809,21 @@ export default function CurriculoScreen({ navigation }: any) {
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                   <TouchableOpacity
                     onPress={() => Linking.openURL(l.url)}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      flex: 1,
+                    }}
                   >
                     <LinkIcon color={t.colors.primary} size={16} />
                     <Text style={{ color: t.colors.text, fontWeight: "800" }}>
                       {l.label}
                     </Text>
-                    <Text numberOfLines={1} style={{ color: t.colors.textMuted, flex: 1 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: t.colors.textMuted, flex: 1 }}
+                    >
                       {l.url}
                     </Text>
                   </TouchableOpacity>
