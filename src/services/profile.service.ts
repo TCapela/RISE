@@ -3,15 +3,22 @@ import { api } from "./api";
 export type UsuarioResponse = {
   idUsuario: number;
   nomeUsuario: string;
-  emailUsuario?: string | null;
+  emailUsuario: string;
+  senhaUsuario?: string | null;
   tipoUsuario?: string | null;
+  telefone?: string | null;
+  desc?: string | null;
+  habilidades?: string | null;
 };
 
 export type UsuarioUpdate = {
   nomeUsuario: string;
-  emailUsuario?: string | null;
+  emailUsuario: string;
   senhaUsuario?: string | null;
   tipoUsuario?: string | null;
+  telefone?: string | null;
+  desc?: string | null;
+  habilidades?: string | null;
 };
 
 const BASE_PATH = "/Usuario";
