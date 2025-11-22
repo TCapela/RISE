@@ -21,6 +21,7 @@ export type ParsedCurriculo = {
   projects: any[];
   certs: any[];
   links: any[];
+  lastUpdated?: string | null;
 };
 
 export type CurriculoContent = {
@@ -81,6 +82,7 @@ export async function getCurriculoByUser(
     projects,
     certs,
     links,
+    lastUpdated: c.ultimaAtualizacao ?? null,
   };
 }
 

@@ -3,8 +3,7 @@ import { api } from "./api";
 export type UsuarioResponse = {
   idUsuario: number;
   nomeUsuario: string;
-  emailUsuario: string;
-  senhaUsuario?: string | null;
+  emailUsuario?: string | null;
   tipoUsuario?: string | null;
   telefone?: string | null;
   desc?: string | null;
@@ -13,7 +12,7 @@ export type UsuarioResponse = {
 
 export type UsuarioUpdate = {
   nomeUsuario: string;
-  emailUsuario: string;
+  emailUsuario?: string | null;
   senhaUsuario?: string | null;
   tipoUsuario?: string | null;
   telefone?: string | null;

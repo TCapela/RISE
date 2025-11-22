@@ -28,14 +28,15 @@ type State = {
   removeSkill: (skill: string) => void;
 };
 
-const parseSkills = (raw?: string | null) =>
-  (raw || "")
-    .split(/[;,]/g)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-const stringifySkills = (skills: string[]) =>
-  skills.map((s) => s.trim()).filter(Boolean).join(", ");
+function parseSkills(raw?: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+}
 
 const mapDtoToProfile = (dto: UsuarioResponse, prev?: Profile): Profile => ({
   idUsuario: dto.idUsuario,
@@ -92,19 +93,14 @@ export const useProfile = create<State>((set, get) => ({
       throw new Error("Usuário sem ID");
     }
 
-    if (!profile.email.trim()) {
-      set({ error: "Email é obrigatório" });
-      throw new Error("Email é obrigatório");
-    }
-
     const payload: UsuarioUpdate = {
-      nomeUsuario: profile.name.trim() || "Usuário R.I.S.E.",
-      emailUsuario: profile.email.trim(),
-      tipoUsuario: profile.role.trim() || null,
-      telefone: profile.phone.trim() || null,
-      desc: profile.bio.trim() || null,
-      habilidades: stringifySkills(profile.skills) || null,
+      nomeUsuario: profile.name || "Usuário R.I.S.E.",
+      emailUsuario: profile.email || null,
+      tipoUsuario: profile.role || null,
       senhaUsuario: null,
+      telefone: profile.phone || null,
+      desc: profile.bio || null,
+      habilidades: JSON.stringify(profile.skills || []),
     };
 
     set({ saving: true, error: undefined });

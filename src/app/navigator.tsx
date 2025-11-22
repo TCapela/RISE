@@ -103,7 +103,11 @@ function AppStack() {
     >
       <Stack.Screen name="Tabs" component={MainTabs} options={{ headerShown: false }} />
       <Stack.Screen name="Perfil" component={ProfileScreen} />
-      <Stack.Screen name="Currículo" component={CurriculoScreen} />
+      <Stack.Screen
+        name="Currículo"
+        component={CurriculoScreen}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen name="Config" component={ConfigScreen} options={{ title: "Configurações" }} />
       <Stack.Screen name="Sobre" component={AboutScreen} />
     </Stack.Navigator>
