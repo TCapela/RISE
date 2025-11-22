@@ -16,58 +16,47 @@ export type MoodEntry = {
   date: string;
   value: MoodValue;
   note: string;
+  hours: string | null;
 };
 
 type State = {
   entries: MoodEntry[];
   loading: boolean;
   error?: string;
-  load: () => Promise<void>;
-  saveToday: (value: MoodValue | 0, note: string) => Promise<void>;
+  load: (userId: number) => Promise<void>;
+  upsert: (userId: number, dateKey: string, value: MoodValue | 0, note: string, hoursText: string) => Promise<void>;
   remove: (id: number) => Promise<void>;
 };
 
-const FIXED_USER_ID = 1;
-
-const todayKey = () => {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-};
+const toDateKey = (d: Date) =>
+  d.getFullYear() +
+  "-" +
+  String(d.getMonth() + 1).padStart(2, "0") +
+  "-" +
+  String(d.getDate()).padStart(2, "0");
 
 const dtoToEntry = (dto: BemEstarDto): MoodEntry => {
-  const d = new Date(dto.dtRegistro); // respeita UTC -> local
-
-  const localKey =
-    d.getFullYear() +
-    "-" +
-    String(d.getMonth() + 1).padStart(2, "0") +
-    "-" +
-    String(d.getDate()).padStart(2, "0");
-
+  const d = new Date(dto.dtRegistro);
+  const key = toDateKey(d);
   return {
     id: dto.idBemEstar,
-    date: localKey,
+    date: key,
     value: dto.nivelHumor as MoodValue,
     note: dto.descAtividade ?? "",
+    hours: dto.horasEstudo ?? null,
   };
 };
-
 
 export const useWellbeing = create<State>((set, get) => ({
   entries: [],
   loading: false,
   error: undefined,
 
-  async load() {
+  async load(userId) {
     try {
       set({ loading: true, error: undefined });
-      const data = await fetchBemEstarByUser(FIXED_USER_ID);
-      const mapped = data
-        .map(dtoToEntry)
-        .sort((a, b) => a.date.localeCompare(b.date));
+      const data = await fetchBemEstarByUser(userId);
+      const mapped = data.map(dtoToEntry).sort((a, b) => a.date.localeCompare(b.date));
       set({ entries: mapped, loading: false });
     } catch (err: any) {
       set({
@@ -77,24 +66,35 @@ export const useWellbeing = create<State>((set, get) => ({
     }
   },
 
-  async saveToday(value, note) {
-    const key = todayKey();
+  async upsert(userId, dateKey, value, note, hoursText) {
     const state = get();
-    const existing = state.entries.find((e) => e.date === key);
+    const existing = state.entries.find((e) => e.date === dateKey);
 
     const trimmedNote = note.trim();
-    const hasSomething = !!value || !!trimmedNote;
+    const hasSomething = !!value || !!trimmedNote || !!hoursText.trim();
     if (!hasSomething) return;
 
-    const nowIso = new Date().toISOString();
+    const dtRegistroIso = new Date(dateKey + "T12:00:00").toISOString();
+
+    const normalizeHours = (txt: string) => {
+      const v = txt.trim();
+      if (!v) return null;
+      const m = /^(\d{1,2}):(\d{2})$/.exec(v);
+      if (!m) return null;
+      const hh = m[1].padStart(2, "0");
+      const mm = m[2];
+      return `${hh}:${mm}:00`;
+    };
+
+    const horasEstudo = normalizeHours(hoursText);
 
     if (!existing) {
       const payload: BemEstarCreate = {
-        dtRegistro: nowIso,
+        dtRegistro: dtRegistroIso,
         nivelHumor: (value || 3) as MoodValue,
-        horasEstudo: null,
+        horasEstudo,
         descAtividade: trimmedNote || null,
-        idUsuario: FIXED_USER_ID,
+        idUsuario: userId,
       };
 
       const created = await createBemEstar(payload);
@@ -110,11 +110,11 @@ export const useWellbeing = create<State>((set, get) => ({
 
     const payloadUpdate: BemEstarUpdate = {
       idBemEstar: existing.id,
-      dtRegistro: nowIso,
+      dtRegistro: dtRegistroIso,
       nivelHumor: (value || existing.value) as MoodValue,
-      horasEstudo: null,
+      horasEstudo: horasEstudo ?? existing.hours,
       descAtividade: trimmedNote || existing.note || null,
-      idUsuario: FIXED_USER_ID,
+      idUsuario: userId,
     };
 
     await updateBemEstar(existing.id, payloadUpdate);
@@ -124,6 +124,7 @@ export const useWellbeing = create<State>((set, get) => ({
       date: existing.date,
       value: (value || existing.value) as MoodValue,
       note: trimmedNote || existing.note,
+      hours: horasEstudo ?? existing.hours,
     };
 
     set((prev) => ({

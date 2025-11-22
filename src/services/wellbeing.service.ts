@@ -28,26 +28,17 @@ export type BemEstarUpdate = {
 
 const BASE_PATH = "/BemEstar";
 
-export async function fetchBemEstarByUser(
-  idUsuario: number
-): Promise<BemEstarDto[]> {
-  const { data } = await api.get<BemEstarDto[]>(BASE_PATH, {
-    params: { idUsuario },
-  });
+export async function fetchBemEstarByUser(idUsuario: number): Promise<BemEstarDto[]> {
+  const { data } = await api.get<BemEstarDto[]>(BASE_PATH, { params: { idUsuario } });
   return data ?? [];
 }
 
-export async function createBemEstar(
-  payload: BemEstarCreate
-): Promise<BemEstarDto> {
+export async function createBemEstar(payload: BemEstarCreate): Promise<BemEstarDto> {
   const { data } = await api.post<BemEstarDto>(BASE_PATH, payload);
   return data;
 }
 
-export async function updateBemEstar(
-  id: number,
-  payload: BemEstarUpdate
-): Promise<void> {
+export async function updateBemEstar(id: number, payload: BemEstarUpdate): Promise<void> {
   await api.put(`${BASE_PATH}/${id}`, payload);
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useTheme } from "../../theme/theme";
 import { useWellbeing, MoodEntry, MoodValue } from "../../store/wellbeing.store";
 import Svg, { Rect, Line } from "react-native-svg";
-import { HeartPulse, Trash2, Save } from "lucide-react-native";
+import { HeartPulse, Trash2, Save, Edit3, CalendarDays, Clock3 } from "lucide-react-native";
+import { useAuth } from "../../store/auth.store";
 
 const moods = [
   { v: 1 as const, label: "Péssimo", emoji: "😣" },
@@ -23,50 +24,90 @@ const moods = [
   { v: 5 as const, label: "Ótimo", emoji: "😄" },
 ];
 
-function formatDateBr(date: string) {
-  const [y, m, d] = date.split("-");
+const toDateKey = (d: Date) =>
+  d.getFullYear() +
+  "-" +
+  String(d.getMonth() + 1).padStart(2, "0") +
+  "-" +
+  String(d.getDate()).padStart(2, "0");
+
+const formatDateBrFull = (key: string) => {
+  const [y, m, d] = key.split("-");
+  return `${d}/${m}/${y}`;
+};
+
+const formatDateBrShort = (key: string) => {
+  const [y, m, d] = key.split("-");
   return `${d}/${m}`;
-}
+};
+
+const parseBrToKey = (txt: string) => {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(txt.trim());
+  if (!m) return null;
+  const d = Number(m[1]);
+  const mo = Number(m[2]);
+  const y = Number(m[3]);
+  const dt = new Date(y, mo - 1, d, 12, 0, 0);
+  if (Number.isNaN(dt.getTime())) return null;
+  return toDateKey(dt);
+};
+
+const maskDateBr = (s: string) => {
+  const digits = s.replace(/\D/g, "").slice(0, 8);
+  const p1 = digits.slice(0, 2);
+  const p2 = digits.slice(2, 4);
+  const p3 = digits.slice(4, 8);
+  let out = p1;
+  if (p2) out += "/" + p2;
+  if (p3) out += "/" + p3;
+  return out;
+};
+
+const maskHours = (s: string) => {
+  const digits = s.replace(/\D/g, "").slice(0, 4);
+  const hh = digits.slice(0, 2);
+  const mm = digits.slice(2, 4);
+  let out = hh;
+  if (mm) out += ":" + mm;
+  return out;
+};
 
 export default function WellbeingScreen() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { entries, loading, error, load, saveToday, remove } = useWellbeing();
+  const { user } = useAuth() as any;
+  const userId = user ? Number(user.id) : NaN;
 
-  const todayKey = useMemo(() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }, []);
+  const { entries, loading, error, load, upsert, remove } = useWellbeing();
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!Number.isNaN(userId)) load(userId);
+  }, [load, userId]);
 
-  const todayEntry = entries.find((e) => e.date === todayKey) ?? null;
-
-  const [selectedMood, setSelectedMood] = useState<MoodValue | null>(
-    todayEntry?.value ?? null
-  );
-  const [note, setNoteLocal] = useState(todayEntry?.note ?? "");
+  const todayKey = useMemo(() => toDateKey(new Date()), []);
+  const [dateText, setDateText] = useState(formatDateBrFull(todayKey));
+  const [selectedMood, setSelectedMood] = useState<MoodValue | null>(null);
+  const [note, setNote] = useState("");
+  const [hoursText, setHoursText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  const currentKey = parseBrToKey(dateText) ?? todayKey;
+  const currentEntry = entries.find((e) => e.date === currentKey) ?? null;
 
   useEffect(() => {
-    setSelectedMood(todayEntry?.value ?? null);
-    setNoteLocal(todayEntry?.note ?? "");
-  }, [todayEntry]);
+    setSelectedMood(currentEntry?.value ?? null);
+    setNote(currentEntry?.note ?? "");
+    setHoursText(currentEntry?.hours ? currentEntry.hours.slice(0, 5) : "");
+    setEditingId(currentEntry?.id ?? null);
+  }, [currentKey, currentEntry?.id]);
 
   const last7 = useMemo<MoodEntry[]>(() => {
     const out: MoodEntry[] = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}-${String(d.getDate()).padStart(2, "0")}`;
+      const key = toDateKey(d);
       const found = entries.find((e) => e.date === key);
       out.push(
         found ?? {
@@ -74,6 +115,7 @@ export default function WellbeingScreen() {
           date: key,
           value: 0 as any,
           note: "",
+          hours: null,
         }
       );
     }
@@ -86,15 +128,25 @@ export default function WellbeingScreen() {
     return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
   }, [last7]);
 
+  const hours7 = useMemo(() => {
+    const toMinutes = (h: string | null) => {
+      if (!h) return 0;
+      const m = /^(\d{2}):(\d{2})/.exec(h);
+      if (!m) return 0;
+      return Number(m[1]) * 60 + Number(m[2]);
+    };
+    const mins = last7.reduce((acc, e) => acc + toMinutes(e.hours), 0);
+    const hh = Math.floor(mins / 60);
+    const mm = mins % 60;
+    return mins ? `${hh}h ${String(mm).padStart(2, "0")}m` : "-";
+  }, [last7]);
+
   const streak = useMemo(() => {
     let s = 0;
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}-${String(d.getDate()).padStart(2, "0")}`;
+      const key = toDateKey(d);
       const has = entries.find((e) => e.date === key && e.value >= 1);
       if (has) s += 1;
       else break;
@@ -102,34 +154,42 @@ export default function WellbeingScreen() {
     return s;
   }, [entries]);
 
+  const tip = useMemo(() => {
+    const v = selectedMood ?? currentEntry?.value ?? 0;
+    if (!v) return "Registrar seu dia te dá clareza. Pequeno hábito, grande efeito.";
+    if (v <= 1) return "Se hoje está difícil, prioriza o básico: sono, água, comida e pedir apoio se precisar.";
+    if (v === 2) return "Talvez valha diminuir cobrança e focar no essencial. Um passo por vez.";
+    if (v === 3) return "Dia neutro. Um bloco curto de estudo + pausa pode virar um bom ritmo.";
+    if (v === 4) return "Bom dia. Aproveita o embalo pra avançar numa meta pequena.";
+    return "Dia ótimo. Só não transforma isso em sobrecarga: descanso também é progresso.";
+  }, [selectedMood, currentEntry]);
+
   const summaryLabel = useMemo(() => {
-    if (!avg7) return "Sem dados suficientes ainda";
-    if (avg7 <= 2) return "Humor mais baixo nos últimos dias";
-    if (avg7 < 4) return "Humor estável, com oscilações naturais";
-    return "Humor alto na maior parte da semana";
+    if (!avg7) return "Poucos dados na semana";
+    if (avg7 <= 2) return "Semana mais pesada";
+    if (avg7 < 4) return "Semana estável";
+    return "Semana positiva";
   }, [avg7]);
 
-  const tip = useMemo(() => {
-    const v = selectedMood ?? todayEntry?.value ?? 0;
-    if (!v) return "Registrar como você está hoje já é um passo importante de autocuidado.";
-    if (v <= 1) return "Dia pesado. Tenta separar 5 minutos para respirar fundo, alongar e beber água.";
-    if (v === 2) return "Talvez seja um dia bom para reduzir exigências e focar só no essencial.";
-    if (v === 3) return "Você está no meio do caminho. Que tal planejar um bloco curto de estudo e uma pausa depois?";
-    if (v === 4) return "Aproveita o bom momento para avançar um pouco em uma trilha ou projeto que importa para você.";
-    return "Dia ótimo! Só cuida para não lotar demais a agenda: descanso também é produtividade.";
-  }, [selectedMood, todayEntry]);
-
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
+    const key = parseBrToKey(dateText);
+    if (!key) {
+      Alert.alert("Data inválida", "Use DD/MM/AAAA");
+      return;
+    }
+    if (Number.isNaN(userId)) {
+      Alert.alert("Usuário não identificado");
+      return;
+    }
     try {
-      if (!selectedMood && !note.trim()) return;
       setSaving(true);
-      await saveToday(selectedMood ?? 0, note);
+      await upsert(userId, key, selectedMood ?? 0, note, hoursText);
     } catch (err: any) {
       Alert.alert("Erro", err?.message || "Não foi possível salvar o registro.");
     } finally {
       setSaving(false);
     }
-  };
+  }, [dateText, userId, upsert, selectedMood, note, hoursText]);
 
   const last14Sorted = useMemo(
     () => [...entries].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 14),
@@ -153,19 +213,13 @@ export default function WellbeingScreen() {
               Bem-estar
             </Text>
             <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
-              Registro emocional para acompanhar sua jornada
+              Check-in rápido do seu dia
             </Text>
           </View>
         </View>
 
         {loading && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <ActivityIndicator color={t.colors.primary} />
             <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
               Carregando registros...
@@ -179,129 +233,6 @@ export default function WellbeingScreen() {
           </Text>
         )}
 
-        <View
-          style={{
-            backgroundColor: t.colors.surfaceAlt,
-            borderRadius: t.radius.lg,
-            padding: t.spacing.lg,
-            borderWidth: 1,
-            borderColor: t.colors.border,
-            gap: t.spacing.md,
-          }}
-        >
-          <Text style={{ color: t.colors.text, fontWeight: "800" }}>
-            Como você está hoje?
-          </Text>
-
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            {moods.map((m) => {
-              const focused = selectedMood === m.v;
-              return (
-                <TouchableOpacity
-                  key={m.v}
-                  onPress={() => setSelectedMood(m.v)}
-                  style={{
-                    flex: 1,
-                    marginHorizontal: 4,
-                    borderRadius: 18,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingVertical: 8,
-                    backgroundColor: focused ? "rgba(78,242,195,0.12)" : t.colors.glass,
-                    borderWidth: 1,
-                    borderColor: focused ? t.colors.primary : t.colors.border,
-                  }}
-                >
-                  <Text style={{ fontSize: 20 }}>{m.emoji}</Text>
-                  <Text
-                    style={{
-                      color: focused ? t.colors.primary : t.colors.text,
-                      fontSize: 11,
-                      marginTop: 4,
-                    }}
-                  >
-                    {m.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <Text
-            style={{
-              color: t.colors.textMuted,
-              fontSize: 11,
-              marginTop: 2,
-              textAlign: "center",
-            }}
-          >
-            Do 1 (dia muito difícil) ao 5 (dia muito bom)
-          </Text>
-
-          <TextInput
-            placeholder="O que está influenciando o seu dia? (opcional)"
-            placeholderTextColor={t.colors.tabInactive}
-            value={note}
-            onChangeText={setNoteLocal}
-            style={{
-              marginTop: t.spacing.sm,
-              backgroundColor: "#10152A",
-              color: t.colors.text,
-              borderRadius: t.radius.md,
-              paddingHorizontal: 12,
-              paddingVertical: 12,
-              borderWidth: 1,
-              borderColor: t.colors.border,
-              minHeight: 70,
-            }}
-            multiline
-          />
-
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={saving || (!selectedMood && !note.trim())}
-            style={{
-              marginTop: t.spacing.sm,
-              alignSelf: "flex-end",
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-              borderRadius: t.radius.pill,
-              backgroundColor:
-                saving || (!selectedMood && !note.trim())
-                  ? t.colors.border
-                  : t.colors.primary,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <Save color="#0B0D13" size={16} />
-            <Text
-              style={{
-                color: "#0B0D13",
-                fontWeight: "800",
-                fontSize: 13,
-              }}
-            >
-              {saving ? "Salvando..." : "Salvar check-in"}
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={{ color: t.colors.textMuted, fontSize: 11 }}>
-            Esse registro é só seu. Use como um diário rápido.
-          </Text>
-
-          <Text
-            style={{
-              color: todayEntry ? t.colors.accent : t.colors.textMuted,
-              fontSize: 12,
-              marginTop: 4,
-            }}
-          >
-            {todayEntry ? "Check-in salvo para hoje" : "Ainda sem check-in hoje"}
-          </Text>
-        </View>
-
         <View style={{ flexDirection: "row", gap: t.spacing.sm }}>
           <View
             style={{
@@ -314,7 +245,9 @@ export default function WellbeingScreen() {
               gap: 4,
             }}
           >
-            <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Média 7 dias</Text>
+            <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
+              Média 7 dias
+            </Text>
             <Text style={{ color: t.colors.text, fontSize: 22, fontWeight: "800" }}>
               {avg7 || "-"}
             </Text>
@@ -334,14 +267,195 @@ export default function WellbeingScreen() {
               gap: 4,
             }}
           >
-            <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Dias seguidos</Text>
+            <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
+              Sequência
+            </Text>
             <Text style={{ color: t.colors.text, fontSize: 22, fontWeight: "800" }}>
               {streak}d
             </Text>
             <Text style={{ color: t.colors.textMuted, fontSize: 11 }}>
-              Quantos dias você registrou sem pular
+              Dias seguidos com check-in
             </Text>
           </View>
+
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: t.colors.glass,
+              borderRadius: t.radius.lg,
+              borderWidth: 1,
+              borderColor: t.colors.border,
+              padding: t.spacing.md,
+              gap: 4,
+            }}
+          >
+            <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
+              Estudo 7 dias
+            </Text>
+            <Text style={{ color: t.colors.text, fontSize: 22, fontWeight: "800" }}>
+              {hours7}
+            </Text>
+            <Text style={{ color: t.colors.textMuted, fontSize: 11 }}>
+              Soma de horas registradas
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={{
+            backgroundColor: t.colors.surfaceAlt,
+            borderRadius: t.radius.lg,
+            padding: t.spacing.lg,
+            borderWidth: 1,
+            borderColor: t.colors.border,
+            gap: t.spacing.md,
+          }}
+        >
+          <Text style={{ color: t.colors.text, fontWeight: "800" }}>
+            Check-in do dia
+          </Text>
+
+          <View
+            style={{
+              backgroundColor: "#10152A",
+              borderRadius: t.radius.md,
+              borderWidth: 1,
+              borderColor: t.colors.border,
+              paddingHorizontal: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              height: 46,
+            }}
+          >
+            <CalendarDays color={t.colors.tabInactive} size={18} />
+            <TextInput
+              placeholder="Data (DD/MM/AAAA)"
+              placeholderTextColor={t.colors.tabInactive}
+              value={dateText}
+              onChangeText={(v) => setDateText(maskDateBr(v))}
+              style={{ flex: 1, color: t.colors.text, fontSize: 14 }}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
+            />
+            {currentKey !== todayKey && (
+              <TouchableOpacity onPress={() => setDateText(formatDateBrFull(todayKey))}>
+                <Text style={{ color: t.colors.primary, fontWeight: "800", fontSize: 12 }}>
+                  Hoje
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            {moods.map((m) => {
+              const focused = selectedMood === m.v;
+              return (
+                <TouchableOpacity
+                  key={m.v}
+                  onPress={() => setSelectedMood(m.v)}
+                  style={{
+                    flex: 1,
+                    marginHorizontal: 4,
+                    borderRadius: 16,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: 8,
+                    backgroundColor: focused ? "rgba(78,242,195,0.12)" : t.colors.glass,
+                    borderWidth: 1,
+                    borderColor: focused ? t.colors.primary : t.colors.border,
+                  }}
+                >
+                  <Text style={{ fontSize: 20 }}>{m.emoji}</Text>
+                  <Text
+                    style={{
+                      color: focused ? t.colors.primary : t.colors.text,
+                      fontSize: 10,
+                      marginTop: 4,
+                    }}
+                  >
+                    {m.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View
+            style={{
+              backgroundColor: "#10152A",
+              borderRadius: t.radius.md,
+              borderWidth: 1,
+              borderColor: t.colors.border,
+              paddingHorizontal: 12,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              height: 46,
+            }}
+          >
+            <Clock3 color={t.colors.tabInactive} size={18} />
+            <TextInput
+              placeholder="Horas de estudo (HH:MM)"
+              placeholderTextColor={t.colors.tabInactive}
+              value={hoursText}
+              onChangeText={(v) => setHoursText(maskHours(v))}
+              style={{ flex: 1, color: t.colors.text, fontSize: 14 }}
+              keyboardType="number-pad"
+              maxLength={5}
+            />
+          </View>
+
+          <TextInput
+            placeholder="Atividade/nota do dia (até 50 caracteres)"
+            placeholderTextColor={t.colors.tabInactive}
+            value={note}
+            onChangeText={setNote}
+            style={{
+              backgroundColor: "#10152A",
+              color: t.colors.text,
+              borderRadius: t.radius.md,
+              paddingHorizontal: 12,
+              paddingVertical: 12,
+              borderWidth: 1,
+              borderColor: t.colors.border,
+              minHeight: 70,
+            }}
+            maxLength={50}
+            multiline
+          />
+
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ color: t.colors.textMuted, fontSize: 11 }}>
+              {note.length}/50
+            </Text>
+
+            <TouchableOpacity
+              onPress={handleSave}
+              disabled={saving || (!selectedMood && !note.trim() && !hoursText.trim())}
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                borderRadius: t.radius.pill,
+                backgroundColor:
+                  saving || (!selectedMood && !note.trim() && !hoursText.trim())
+                    ? t.colors.border
+                    : t.colors.primary,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <Save color="#0B0D13" size={16} />
+              <Text style={{ color: "#0B0D13", fontWeight: "800", fontSize: 13 }}>
+                {saving ? "Salvando..." : editingId ? "Atualizar" : "Salvar"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
+            {currentEntry ? "Registro existente para esse dia." : "Sem registro nesse dia ainda."}
+          </Text>
         </View>
 
         <View
@@ -353,28 +467,14 @@ export default function WellbeingScreen() {
             borderColor: t.colors.border,
           }}
         >
-          <Text
-            style={{
-              color: t.colors.text,
-              fontWeight: "800",
-              marginBottom: t.spacing.sm,
-            }}
-          >
+          <Text style={{ color: t.colors.text, fontWeight: "800", marginBottom: t.spacing.sm }}>
             Últimos 7 dias
           </Text>
 
           <Svg width="100%" height={120} viewBox="0 0 350 120">
-            <Line
-              x1="0"
-              y1="100"
-              x2="350"
-              y2="100"
-              stroke={t.colors.border}
-              strokeWidth="1"
-            />
+            <Line x1="0" y1="100" x2="350" y2="100" stroke={t.colors.border} strokeWidth="1" />
             {last7.map((e, i) => {
-              const baseHeight = e.value ? e.value * 16 : 4;
-              const h = baseHeight;
+              const h = e.value ? e.value * 16 : 4;
               const x = 20 + i * 45;
               const y = 100 - h;
               const filled = e.value >= 1;
@@ -392,36 +492,19 @@ export default function WellbeingScreen() {
             })}
           </Svg>
 
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              marginTop: 4,
-            }}
-          >
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
             {last7.map((e) => (
               <Text
                 key={`${e.date}-label`}
-                style={{
-                  color: t.colors.textMuted,
-                  fontSize: 10,
-                  width: 32,
-                  textAlign: "center",
-                }}
+                style={{ color: t.colors.textMuted, fontSize: 10, width: 32, textAlign: "center" }}
                 numberOfLines={1}
               >
-                {formatDateBr(e.date)}
+                {formatDateBrShort(e.date)}
               </Text>
             ))}
           </View>
 
-          <Text
-            style={{
-              color: t.colors.textMuted,
-              marginTop: t.spacing.sm,
-              fontSize: 12,
-            }}
-          >
+          <Text style={{ color: t.colors.textMuted, marginTop: t.spacing.sm, fontSize: 12 }}>
             {tip}
           </Text>
         </View>
@@ -439,13 +522,16 @@ export default function WellbeingScreen() {
           <Text style={{ color: t.colors.text, fontWeight: "800" }}>
             Linha do tempo
           </Text>
+
           <FlatList
             data={last14Sorted}
             keyExtractor={(i) => String(i.id)}
             scrollEnabled={false}
             ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
             renderItem={({ item }) => (
-              <View
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => setDateText(formatDateBrFull(item.date))}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -460,8 +546,8 @@ export default function WellbeingScreen() {
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <View
                     style={{
-                      width: 36,
-                      height: 36,
+                      width: 40,
+                      height: 40,
                       borderRadius: 999,
                       alignItems: "center",
                       justifyContent: "center",
@@ -470,35 +556,45 @@ export default function WellbeingScreen() {
                       borderColor: t.colors.border,
                     }}
                   >
-                    <Text style={{ color: t.colors.primary, fontWeight: "800" }}>
+                    <Text style={{ color: t.colors.primary, fontWeight: "900" }}>
                       {item.value || "-"}
                     </Text>
                   </View>
-                  <View style={{ maxWidth: 200 }}>
-                    <Text style={{ color: t.colors.text, fontWeight: "700" }}>
-                      {formatDateBr(item.date)}
-                    </Text>
+
+                  <View style={{ maxWidth: 220, gap: 2 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Text style={{ color: t.colors.text, fontWeight: "800" }}>
+                        {formatDateBrFull(item.date)}
+                      </Text>
+                      {!!item.hours && (
+                        <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>
+                          • {item.hours.slice(0,5)}h estudo
+                        </Text>
+                      )}
+                    </View>
+
                     {!!item.note && (
-                      <Text
-                        style={{ color: t.colors.textMuted, fontSize: 12 }}
-                        numberOfLines={1}
-                      >
+                      <Text style={{ color: t.colors.textMuted, fontSize: 12 }} numberOfLines={2}>
                         {item.note}
                       </Text>
                     )}
                   </View>
                 </View>
-                <TouchableOpacity
-                  onPress={() => remove(item.id)}
-                  style={{ padding: 6 }}
-                >
-                  <Trash2 color={t.colors.tabInactive} />
-                </TouchableOpacity>
-              </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Edit3 size={16} color={t.colors.tabInactive} />
+                  <TouchableOpacity
+                    onPress={() => remove(item.id)}
+                    style={{ padding: 6 }}
+                  >
+                    <Trash2 color={t.colors.tabInactive} />
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
             )}
             ListEmptyComponent={
               <Text style={{ color: t.colors.textMuted }}>
-                Sem registros ainda. Comece registrando o dia de hoje.
+                Sem registros ainda. Comece com o dia de hoje.
               </Text>
             }
           />
