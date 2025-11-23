@@ -12,6 +12,14 @@ function joinNotEmpty(values: (string | undefined | null)[], separator: string) 
   return values.filter(Boolean).join(separator);
 }
 
+function normalizeUrl(raw?: string | null) {
+  if (!raw) return "";
+  const v = raw.trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://${v}`;
+}
+
 export function buildCurriculoHTML(data: CurriculoData) {
   const name = esc(data.name) || "Usuário R.I.S.E.";
   const role = esc(data.role);
@@ -19,9 +27,6 @@ export function buildCurriculoHTML(data: CurriculoData) {
   const phone = esc(data.phone);
   const location = esc(data.location);
   const summary = esc(data.summary);
-  const completeness = Number.isFinite(data.completeness)
-    ? Math.max(0, Math.min(100, Math.round(data.completeness)))
-    : 0;
 
   const skillsHtml = (data.skills || [])
     .map((s) => `<span class="tag">${esc(s)}</span>`)
@@ -39,11 +44,7 @@ export function buildCurriculoHTML(data: CurriculoData) {
           )}</div>
         </div>
         <div class="block-sub">${esc(e.company) || ""}</div>
-        ${
-          e.desc
-            ? `<p class="block-text">${esc(e.desc)}</p>`
-            : ""
-        }
+        ${e.desc ? `<p class="block-text">${esc(e.desc)}</p>` : ""}
       </div>
     `
     )
@@ -67,25 +68,22 @@ export function buildCurriculoHTML(data: CurriculoData) {
     .join("");
 
   const projectsHtml = (data.projects || [])
-    .map(
-      (p) => `
+    .map((p) => {
+      const safeLink = normalizeUrl(p.link);
+      return `
       <div class="block">
         <div class="block-title">${esc(p.name) || ""}</div>
         ${
-          p.link
+          safeLink
             ? `<div class="block-link"><a href="${esc(
-                p.link
-              )}" target="_blank">${esc(p.link)}</a></div>`
+                safeLink
+              )}" target="_blank" rel="noreferrer">${esc(safeLink)}</a></div>`
             : ""
         }
-        ${
-          p.desc
-            ? `<p class="block-text">${esc(p.desc)}</p>`
-            : ""
-        }
+        ${p.desc ? `<p class="block-text">${esc(p.desc)}</p>` : ""}
       </div>
-    `
-    )
+    `;
+    })
     .join("");
 
   const certsHtml = (data.certs || [])
@@ -103,14 +101,17 @@ export function buildCurriculoHTML(data: CurriculoData) {
     .join("");
 
   const linksHtml = (data.links || [])
-    .map(
-      (l) => `
+    .map((l) => {
+      const safeUrl = normalizeUrl(l.url);
+      return `
       <div class="inline-link">
         <span class="inline-label">${esc(l.label)}:</span>
-        <a href="${esc(l.url)}" target="_blank">${esc(l.url)}</a>
+        <a href="${esc(safeUrl)}" target="_blank" rel="noreferrer">${esc(
+        safeUrl
+      )}</a>
       </div>
-    `
-    )
+    `;
+    })
     .join("");
 
   const contactLines = [
@@ -119,433 +120,388 @@ export function buildCurriculoHTML(data: CurriculoData) {
     location || "",
   ].filter(Boolean);
 
+  const initials = name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
+
   return `
   <html>
     <head>
       <meta charset="utf-8" />
       <style>
+        @page {
+          size: A4;
+          margin: 0;
+        }
+
         * {
           box-sizing: border-box;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
-        body {
+
+        html, body {
           margin: 0;
           padding: 0;
+          width: 210mm;
+          height: 297mm;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-          background: #e5e7eb;
+          background: #0b1120;
           color: #0b0d13;
-        }
-        .page {
-          width: 100%;
-          max-width: 820px;
-          margin: 0 auto;
-          background: #f9fafb;
-          display: flex;
-          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
           overflow: hidden;
         }
+
+        body {
+          position: relative;
+        }
+
+        body::before {
+          content: "";
+          position: fixed;
+          top: -10mm;
+          left: -10mm;
+          right: -10mm;
+          bottom: -10mm;
+          background: #0b1120;
+          z-index: 0;
+        }
+
+        .page {
+          position: relative;
+          z-index: 1;
+          width: 210mm;
+          height: 297mm;
+          display: flex;
+          align-items: stretch;
+          background: #0b1120;
+          overflow: hidden;
+        }
+
         .sidebar {
-          width: 32%;
-          background: linear-gradient(180deg, #0b1120 0%, #020617 100%);
+          flex: 0 0 26%;
+          height: 100%;
+          background: #0b1120;
           color: #f9fafb;
-          padding: 24px 20px 26px;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-        }
-        .sidebar-top {
-          gap: 16px;
           display: flex;
           flex-direction: column;
         }
+
+        .sidebar-inner {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 6mm;
+          padding: 0;
+        }
+
         .avatar {
-          width: 84px;
-          height: 84px;
+          width: 25mm;
+          height: 25mm;
           border-radius: 999px;
           background: radial-gradient(circle at 30% 20%, #38bdf8 0, #0ea5e9 35%, #22c55e 100%);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 28px;
-          font-weight: 800;
-          letter-spacing: 1px;
-        }
-        .sidebar-name {
           font-size: 20px;
           font-weight: 800;
-          margin-top: 12px;
-          line-height: 1.2;
+          margin: 6mm 0 0 6mm;
         }
+
+        .sidebar-name {
+          font-size: 19px;
+          font-weight: 800;
+          margin: 3mm 5mm 0 6mm;
+          line-height: 1.15;
+        }
+
         .sidebar-role {
-          font-size: 11px;
-          font-weight: 500;
-          opacity: 0.9;
-          margin-top: 4px;
+          font-size: 12px;
+          margin: 1mm 5mm 0 6mm;
+          opacity: .95;
+          font-weight: 600;
         }
-        .tagline {
-          font-size: 10px;
-          opacity: 0.9;
-          margin-top: 8px;
-          line-height: 1.4;
-        }
+
         .sidebar-section {
-          margin-top: 16px;
+          margin: 2mm 5mm 0 6mm;
         }
+
         .sidebar-title {
-          font-size: 10px;
+          font-size: 10.5px;
           text-transform: uppercase;
-          letter-spacing: 0.14em;
           color: #a5b4fc;
-          margin-bottom: 4px;
+          font-weight: 900;
+          letter-spacing: .12em;
+          margin-bottom: 1.5mm;
         }
+
         .sidebar-line {
           width: 34px;
           height: 2px;
           border-radius: 999px;
-          background: linear-gradient(90deg, #4ef2c3, #38bdf8);
-          margin-bottom: 6px;
+          background: linear-gradient(90deg,#4ef2c3,#38bdf8);
+          margin-bottom: 2mm;
         }
+
         .sidebar-text {
-          font-size: 10px;
-          line-height: 1.5;
-          color: #e5e7eb;
-        }
-        .sidebar-footer {
-          margin-top: 18px;
-          font-size: 9px;
-          color: #9ca3af;
-          line-height: 1.4;
-        }
-        .main {
-          width: 68%;
-          background: #ffffff;
-          padding: 24px 26px 26px;
-          display: flex;
-          flex-direction: column;
-        }
-        .main-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 10px;
-          margin-bottom: 14px;
-        }
-        .main-title {
-          font-size: 17px;
-          font-weight: 700;
-          letter-spacing: 0.06em;
-          text-transform: uppercase;
-          color: #0f172a;
-        }
-        .main-subtitle {
-          font-size: 10px;
-          color: #6b7280;
-        }
-        .score-pill {
-          min-width: 90px;
-          text-align: right;
-        }
-        .score-label {
-          font-size: 9px;
-          text-transform: uppercase;
-          letter-spacing: 0.12em;
-          color: #9ca3af;
-        }
-        .score-value {
-          font-size: 17px;
-          font-weight: 800;
-          color: #22c55e;
-        }
-        .score-bar {
-          margin-top: 3px;
-          width: 100%;
-          height: 4px;
-          border-radius: 999px;
-          background: #e5e7eb;
-          overflow: hidden;
-        }
-        .score-bar-fill {
-          height: 100%;
-          width: ${completeness}%;
-          background: linear-gradient(90deg, #4ef2c3, #38bdf8);
-        }
-        .section {
-          margin-top: 12px;
-        }
-        .section-header {
-          display: grid;
-          grid-template-columns: auto 1fr;
-          align-items: center;
-          column-gap: 8px;
-          margin-bottom: 4px;
-        }
-        .section-title {
           font-size: 11px;
-          text-transform: uppercase;
-          letter-spacing: 0.16em;
-          color: #1d4ed8;
-          font-weight: 700;
-        }
-        .section-line {
-          height: 1px;
-          background: linear-gradient(90deg, #bfdbfe, rgba(191, 219, 254, 0));
-        }
-        .section-body {
-          font-size: 11px;
-          color: #111827;
           line-height: 1.55;
         }
-        .summary-text {
-          margin: 0;
-        }
-        .tag-group {
-          margin-top: 2px;
-        }
+
+        .tag-group { margin-top: 1mm; }
         .tag {
           display: inline-block;
           font-size: 10px;
           padding: 3px 8px;
           border-radius: 999px;
-          background: #eff6ff;
+          background: rgba(239,246,255,0.12);
+          color: #dbeafe;
+          border: 1px solid rgba(191,219,254,0.4);
+          margin: 2px 4px 0 0;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+
+        .main {
+          flex: 0 0 74%;
+          height: 100%;
+          background: #ffffff;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .main-inner {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .main-header {
+          margin: 8mm 7mm 5mm 7mm;
+        }
+
+        .main-title {
+          font-size: 19px;
+          font-weight: 900;
+          text-transform: uppercase;
+          color: #0f172a;
+          letter-spacing: 0.06em;
+        }
+
+        .section {
+          margin: 7mm 7mm 0 7mm;
+        }
+
+        .section-header {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          align-items: center;
+          column-gap: 6px;
+          margin-bottom: 2mm;
+        }
+
+        .section-title {
+          font-size: 12.5px;
+          text-transform: uppercase;
+          font-weight: 900;
+          letter-spacing: .14em;
           color: #1d4ed8;
-          border: 1px solid #bfdbfe;
-          font-weight: 600;
-          margin: 3px 5px 0 0;
         }
+
+        .section-line {
+          height: 1px;
+          background: linear-gradient(90deg,#bfdbfe,rgba(191,219,254,0));
+        }
+
+        .section-body {
+          font-size: 12.2px;
+          line-height: 1.55;
+          color: #111827;
+        }
+
         .block {
-          padding: 6px 0;
+          padding: 2.2mm 0;
           border-bottom: 1px solid #e5e7eb;
+          page-break-inside: avoid;
         }
-        .block:last-child {
-          border-bottom: none;
-        }
+
+        .block:last-child { border-bottom: none; }
+
         .block-header {
           display: flex;
           justify-content: space-between;
           gap: 8px;
           align-items: baseline;
         }
+
         .block-title {
-          font-size: 11px;
-          font-weight: 700;
+          font-size: 13px;
+          font-weight: 900;
           color: #111827;
         }
+
         .block-meta {
-          font-size: 9px;
+          font-size: 11.5px;
           color: #6b7280;
           white-space: nowrap;
         }
+
         .block-sub {
-          font-size: 10px;
+          font-size: 11.8px;
           color: #4b5563;
-          margin-top: 1px;
+          margin-top: 1mm;
         }
+
         .block-text {
-          font-size: 10px;
+          font-size: 11.8px;
           color: #111827;
-          margin: 3px 0 0;
+          margin-top: 1.2mm;
         }
+
         .block-link {
-          font-size: 10px;
-          margin-top: 2px;
-        }
-        .block-link a {
-          color: #2563eb;
-          text-decoration: none;
-        }
-        .block-link a:hover {
-          text-decoration: underline;
-        }
-        .inline-link {
-          font-size: 10px;
-          margin: 2px 0;
-        }
-        .inline-label {
-          font-weight: 600;
-          color: #374151;
-          margin-right: 4px;
-        }
-        .inline-link a {
-          color: #2563eb;
-          text-decoration: none;
+          font-size: 11.8px;
+          margin-top: 1mm;
           word-break: break-all;
         }
-        .inline-link a:hover {
-          text-decoration: underline;
+
+        .inline-link {
+          font-size: 11.5px;
+          margin-top: 1mm;
+          word-break: break-all;
+        }
+
+        a {
+          color: #2563eb;
+          text-decoration: none;
         }
       </style>
     </head>
+
     <body>
       <div class="page">
         <div class="sidebar">
-          <div class="sidebar-top">
+          <div class="sidebar-inner">
             <div>
-              <div class="avatar">
-                ${name
-                  .split(" ")
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .map((p) => p[0])
-                  .join("")
-                  .toUpperCase()}
-              </div>
+              <div class="avatar">${initials}</div>
               <div class="sidebar-name">${name}</div>
-              ${
-                role
-                  ? `<div class="sidebar-role">${role}</div>`
-                  : ""
-              }
-              <p class="tagline">
-                Requalificação, Inclusão, Sustentabilidade e Empregabilidade. Perfil gerado com apoio da plataforma R.I.S.E.
-              </p>
+              ${role ? `<div class="sidebar-role">${role}</div>` : ""}
             </div>
 
             ${
               contactLines.length
                 ? `
-              <div class="sidebar-section">
-                <div class="sidebar-title">Contato</div>
-                <div class="sidebar-line"></div>
-                <div class="sidebar-text">
-                  ${contactLines.join("<br/>")}
-                </div>
-              </div>
-            `
+                <div class="sidebar-section">
+                  <div class="sidebar-title">Contato</div>
+                  <div class="sidebar-line"></div>
+                  <div class="sidebar-text">
+                    ${contactLines.join("<br/>")}
+                  </div>
+                </div>`
                 : ""
             }
 
             ${
               skillsHtml
                 ? `
-              <div class="sidebar-section">
-                <div class="sidebar-title">Habilidades-chave</div>
-                <div class="sidebar-line"></div>
-                <div class="sidebar-text">
-                  <div class="tag-group">
-                    ${skillsHtml}
+                <div class="sidebar-section">
+                  <div class="sidebar-title">Habilidades</div>
+                  <div class="sidebar-line"></div>
+                  <div class="sidebar-text">
+                    <div class="tag-group">${skillsHtml}</div>
                   </div>
-                </div>
-              </div>
-            `
+                </div>`
                 : ""
             }
 
             ${
               linksHtml
                 ? `
-              <div class="sidebar-section">
-                <div class="sidebar-title">Links</div>
-                <div class="sidebar-line"></div>
-                <div class="sidebar-text">
-                  ${linksHtml}
-                </div>
-              </div>
-            `
+                <div class="sidebar-section">
+                  <div class="sidebar-title">Links</div>
+                  <div class="sidebar-line"></div>
+                  <div class="sidebar-text">
+                    ${linksHtml}
+                  </div>
+                </div>`
                 : ""
             }
-          </div>
-
-          <div class="sidebar-footer">
-            R.I.S.E. • Plataforma de apoio à jornada profissional.<br/>
-            Este currículo foi estruturado automaticamente com base nas informações fornecidas pelo usuário.
           </div>
         </div>
 
         <div class="main">
-          <div class="main-header">
-            <div>
+          <div class="main-inner">
+            <div class="main-header">
               <div class="main-title">Currículo Profissional</div>
-              <div class="main-subtitle">
-                Versão gerada pela R.I.S.E. com foco em empregabilidade e clareza das informações.
-              </div>
             </div>
-            <div class="score-pill">
-              <div class="score-label">Completude</div>
-              <div class="score-value">${completeness}%</div>
-              <div class="score-bar">
-                <div class="score-bar-fill"></div>
-              </div>
-            </div>
+
+            ${
+              summary
+                ? `
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Resumo</div>
+                  <div class="section-line"></div>
+                </div>
+                <div class="section-body">${summary}</div>
+              </div>`
+                : ""
+            }
+
+            ${
+              experiencesHtml
+                ? `
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Experiência</div>
+                  <div class="section-line"></div>
+                </div>
+                <div class="section-body">${experiencesHtml}</div>
+              </div>`
+                : ""
+            }
+
+            ${
+              educationHtml
+                ? `
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Formação</div>
+                  <div class="section-line"></div>
+                </div>
+                <div class="section-body">${educationHtml}</div>
+              </div>`
+                : ""
+            }
+
+            ${
+              projectsHtml
+                ? `
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Projetos</div>
+                  <div class="section-line"></div>
+                </div>
+                <div class="section-body">${projectsHtml}</div>
+              </div>`
+                : ""
+            }
+
+            ${
+              certsHtml
+                ? `
+              <div class="section">
+                <div class="section-header">
+                  <div class="section-title">Certificações</div>
+                  <div class="section-line"></div>
+                </div>
+                <div class="section-body">${certsHtml}</div>
+              </div>`
+                : ""
+            }
           </div>
-
-          ${
-            summary
-              ? `
-            <div class="section">
-              <div class="section-header">
-                <div class="section-title">Resumo</div>
-                <div class="section-line"></div>
-              </div>
-              <div class="section-body">
-                <p class="summary-text">${summary}</p>
-              </div>
-            </div>
-          `
-              : ""
-          }
-
-          ${
-            experiencesHtml
-              ? `
-            <div class="section">
-              <div class="section-header">
-                <div class="section-title">Experiência profissional</div>
-                <div class="section-line"></div>
-              </div>
-              <div class="section-body">
-                ${experiencesHtml}
-              </div>
-            </div>
-          `
-              : ""
-          }
-
-          ${
-            educationHtml
-              ? `
-            <div class="section">
-              <div class="section-header">
-                <div class="section-title">Formação acadêmica</div>
-                <div class="section-line"></div>
-              </div>
-              <div class="section-body">
-                ${educationHtml}
-              </div>
-            </div>
-          `
-              : ""
-          }
-
-          ${
-            projectsHtml
-              ? `
-            <div class="section">
-              <div class="section-header">
-                <div class="section-title">Projetos de destaque</div>
-                <div class="section-line"></div>
-              </div>
-              <div class="section-body">
-                ${projectsHtml}
-              </div>
-            </div>
-          `
-              : ""
-          }
-
-          ${
-            certsHtml
-              ? `
-            <div class="section">
-              <div class="section-header">
-                <div class="section-title">Certificações</div>
-                <div class="section-line"></div>
-              </div>
-              <div class="section-body">
-                ${certsHtml}
-              </div>
-            </div>
-          `
-              : ""
-          }
         </div>
       </div>
     </body>

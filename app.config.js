@@ -19,7 +19,7 @@ module.exports = {
     slug: "rise-app",
     version: "1.0.0",
     extra: {
-      apiBaseUrl: "http://192.168.15.5:5106/api/v1",
+      apiBaseUrl: "http://192.168.15.4:5106/api/v1",
       commitHash: readCommitHash(),
     },
   },
